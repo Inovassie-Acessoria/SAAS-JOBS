@@ -105,6 +105,17 @@ window.H2B = (function () {
     setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, ms || (kind === 'err' ? 5200 : 3200));
   }
   const ok = (m) => toast(m, 'ok');
+  /** Toast curto de gravação automática — não empilha se já houver um igual. */
+  function saved(what) {
+    const wrap = $('#tw');
+    const last = wrap.lastElementChild;
+    if (last && last.dataset.saved === what && last.classList.contains('show')) return;
+    const t = document.createElement('div');
+    t.className = 't g'; t.dataset.saved = what; t.textContent = `✓ ${what} salvo no servidor`;
+    wrap.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 1600);
+  }
   const err = (e) => toast(e && e.message ? e.message : String(e), 'err');
 
   // ------------------------------------------------------------ modais
@@ -185,15 +196,21 @@ window.H2B = (function () {
     } catch (e) { /* offline: fica com o localStorage */ }
   }
   let prefTimer = null, prefBuf = {};
+  function flushPrefs() {
+    clearTimeout(prefTimer); prefTimer = null;
+    const b = prefBuf; prefBuf = {};
+    if (!Object.keys(b).length) return;
+    // keepalive: a requisição sobrevive ao fechamento da aba.
+    try { fetch('/api/seasonal/ui/prefs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b), keepalive: true }).catch(() => {}); } catch (e) { /* silencioso */ }
+  }
   function savePrefs(obj) {
     Object.assign(state.prefs, obj);
     Object.assign(prefBuf, obj);
     clearTimeout(prefTimer);
-    prefTimer = setTimeout(async () => {
-      const b = prefBuf; prefBuf = {};
-      try { await API.seasonal.saveUiPrefs(b); } catch (e) { /* silencioso */ }
-    }, 400);
+    prefTimer = setTimeout(flushPrefs, 400);
   }
+  window.addEventListener('pagehide', flushPrefs);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushPrefs(); });
 
   // ------------------------------------------------------------ navegação
 
@@ -201,6 +218,7 @@ window.H2B = (function () {
   const onShow = {};
   function sv(name, opts) {
     if (!VIEWS.includes(name)) name = 'home';
+    if (state.view === 'profile' && H2B.profile && H2B.profile.ps && H2B.profile.ps.flush) H2B.profile.ps.flush();
     state.view = name;
     VIEWS.forEach(v => { const el = $('#v-' + v); if (el) el.classList.toggle('gone', v !== name); });
     $$('[data-sv]').forEach(b => b.classList.toggle('active', b.dataset.sv === name && (b.classList.contains('bn') || b.classList.contains('sb-item'))));
@@ -364,7 +382,7 @@ window.H2B = (function () {
 
   return {
     $, $$, esc, ls, state, fmtDate, fmtDateTime, fmtUSDate, money, relTime, initials, visaTag, VISA_ICON,
-    toast, ok, err, openModal, closeModal, warn, success,
+    toast, ok, err, saved, openModal, closeModal, warn, success,
     applyTheme, toggleTheme, applyMode, savePrefs,
     sv, onShow, openDrawer, closeDrawer, renderIdentity, refreshCore, renderGlobals, autoIsOn, loadNotifications,
     boot

@@ -85,3 +85,17 @@ test('getJob devolve o id da VAGA, não o da linha de match', () => {
   assert.strictEqual(g.id, first.id);
   assert.strictEqual(g.job_order_id, first.job_order_id);
 });
+
+test('updateConfig: string vazia LIMPA listas de texto; número vazio mantém o atual', () => {
+  seasonal.updateConfig({ preferred_states: 'TX,FL', preferred_occupations: 'harvest', daily_email_limit: 120 });
+  let c = seasonal.getConfig();
+  assert.strictEqual(c.preferred_states, 'TX,FL');
+  assert.strictEqual(c.daily_email_limit, 120);
+
+  seasonal.updateConfig({ preferred_states: '', preferred_occupations: '', daily_email_limit: '' });
+  c = seasonal.getConfig();
+  assert.strictEqual(c.preferred_states, '', '"todos os estados" precisa apagar a lista anterior');
+  assert.strictEqual(c.preferred_occupations, '');
+  assert.strictEqual(c.daily_email_limit, 120, 'input numérico vazio não é uma escolha');
+  seasonal.updateConfig({ daily_email_limit: 300 });
+});

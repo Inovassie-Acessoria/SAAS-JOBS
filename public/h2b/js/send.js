@@ -158,8 +158,20 @@ H2B.send = (function () {
     as.review = cfg.email_review_mode === 'ALWAYS_REVIEW' ? 'REVIEW_FLAGGED' : (cfg.email_review_mode || 'FULLY_AUTOMATIC');
     const f = Number(cfg.auto_queue_fit_threshold);
     as.rigor = f >= 85 ? 'best' : f >= 70 ? 'good' : 'all';
+    // Escolhas feitas no assistente (mesmo sem ligar) ficam no servidor e
+    // voltam no próximo acesso — de qualquer aparelho.
     const w = state.prefs.auto_wizard;
-    if (w && typeof w === 'object') { as.pace = w.pace || as.pace; as.step = w.step || 1; }
+    if (w && typeof w === 'object') {
+      as.pace = w.pace || as.pace; as.step = w.step || 1;
+      if (w.visa) as.visa = w.visa;
+      if (Array.isArray(w.titles)) as.titles = w.titles;
+      if (Array.isArray(w.states)) as.states = w.states;
+      if (w.minWage !== undefined) as.minWage = w.minWage;
+      if (w.limit) as.limit = w.limit;
+      if (w.rigor) as.rigor = w.rigor;
+      if (w.review) as.review = w.review;
+      if (w.resumeId !== undefined) as.resumeId = w.resumeId;
+    }
   }
 
   async function openAuto() {
@@ -253,13 +265,13 @@ H2B.send = (function () {
     const body = $('#auto-body');
     body.onclick = (ev) => {
       const v = ev.target.closest('[data-visa]'); if (v) { const k = v.dataset.visa; as.visa = k === 'both' ? { 'H-2A': true, 'H-2B': true } : { 'H-2A': k === 'H-2A', 'H-2B': k === 'H-2B' }; renderWizard(); return; }
-      const n = ev.target.closest('[data-next]'); if (n) { collect(); as.step = Number(n.dataset.next); H2B.savePrefs({ auto_wizard: { step: as.step, pace: as.pace } }); renderWizard(); body.scrollTop = 0; return; }
-      const t = ev.target.closest('[data-title]'); if (t) { const x = t.dataset.title; as.titles = as.titles.includes(x) ? as.titles.filter(y => y !== x) : as.titles.concat(x); t.classList.toggle('sel'); return; }
-      const s = ev.target.closest('[data-state]'); if (s) { const x = s.dataset.state; as.states = as.states.includes(x) ? as.states.filter(y => y !== x) : as.states.concat(x); s.classList.toggle('sel'); return; }
-      const cv = ev.target.closest('[data-cv]'); if (cv) { as.resumeId = cv.dataset.cv === 'auto' ? null : Number(cv.dataset.cv); $$('#aw-cvs .cv-slot').forEach(x => x.classList.toggle('sel', x === cv)); return; }
-      const p = ev.target.closest('[data-pace]'); if (p) { as.pace = Number(p.dataset.pace); $$('[data-pace]', body).forEach(x => x.classList.toggle('sel', x === p)); return; }
-      const r = ev.target.closest('[data-rigor]'); if (r) { as.rigor = r.dataset.rigor; $$('[data-rigor]', body).forEach(x => x.classList.toggle('sel', x === r)); $('#aw-rigor-hint').textContent = RIGOR[as.rigor].hint; return; }
-      const rv = ev.target.closest('[data-review]'); if (rv) { as.review = rv.dataset.review; $$('[data-review]', body).forEach(x => x.classList.toggle('sel', x === rv)); return; }
+      const n = ev.target.closest('[data-next]'); if (n) { collect(); as.step = Number(n.dataset.next); persistWizard(); renderWizard(); body.scrollTop = 0; return; }
+      const t = ev.target.closest('[data-title]'); if (t) { const x = t.dataset.title; as.titles = as.titles.includes(x) ? as.titles.filter(y => y !== x) : as.titles.concat(x); t.classList.toggle('sel'); persistWizard(); return; }
+      const s = ev.target.closest('[data-state]'); if (s) { const x = s.dataset.state; as.states = as.states.includes(x) ? as.states.filter(y => y !== x) : as.states.concat(x); s.classList.toggle('sel'); persistWizard(); return; }
+      const cv = ev.target.closest('[data-cv]'); if (cv) { as.resumeId = cv.dataset.cv === 'auto' ? null : Number(cv.dataset.cv); $('#aw-cvs .cv-slot').forEach(x => x.classList.toggle('sel', x === cv)); persistWizard(); return; }
+      const p = ev.target.closest('[data-pace]'); if (p) { as.pace = Number(p.dataset.pace); $('[data-pace]', body).forEach(x => x.classList.toggle('sel', x === p)); persistWizard(); return; }
+      const r = ev.target.closest('[data-rigor]'); if (r) { as.rigor = r.dataset.rigor; $('[data-rigor]', body).forEach(x => x.classList.toggle('sel', x === r)); $('#aw-rigor-hint').textContent = RIGOR[as.rigor].hint; persistWizard(); return; }
+      const rv = ev.target.closest('[data-review]'); if (rv) { as.review = rv.dataset.review; $('[data-review]', body).forEach(x => x.classList.toggle('sel', x === rv)); persistWizard(); return; }
       if (ev.target.closest('#aw-titles-clear')) { as.titles = []; renderWizard(); return; }
       if (ev.target.closest('#aw-states-clear')) { as.states = []; renderWizard(); return; }
       if (ev.target.closest('[data-goto-settings]')) { ev.preventDefault(); closeAuto(); H2B.sv('settings'); return; }
@@ -267,11 +279,19 @@ H2B.send = (function () {
       if (ev.target.closest('#aw-start')) { collect(); openPreflight(); return; }
     };
     const tq = $('#aw-title-q'); if (tq) tq.oninput = () => { const q = tq.value.toLowerCase(); $$('#aw-titles [data-title]').forEach(b => { b.style.display = b.dataset.title.toLowerCase().includes(q) ? '' : 'none'; }); };
-    const lim = $('#aw-limit'); if (lim) lim.oninput = () => { as.limit = Number(lim.value); $('#aw-limit-lbl').textContent = as.limit; };
+    const lim = $('#aw-limit'); if (lim) { lim.oninput = () => { as.limit = Number(lim.value); $('#aw-limit-lbl').textContent = as.limit; }; lim.onchange = persistWizard; }
+    const wg = $('#aw-wage'); if (wg) wg.onchange = () => { as.minWage = wg.value.trim(); persistWizard(); };
   }
   function collect() {
     const w = $('#aw-wage'); if (w) as.minWage = w.value.trim();
     const lim = $('#aw-limit'); if (lim) as.limit = Number(lim.value);
+    persistWizard();
+  }
+  function persistWizard() {
+    H2B.savePrefs({ auto_wizard: {
+      step: as.step, pace: as.pace, visa: as.visa, titles: as.titles, states: as.states,
+      minWage: as.minWage, limit: as.limit, rigor: as.rigor, review: as.review, resumeId: as.resumeId
+    } });
   }
 
   // ---------------------------------------------------------------- pré-voo

@@ -50,7 +50,16 @@ function emailCap() {
 
 function updateConfig(data) {
   const cur = getConfig();
-  const v = (k, d) => (data[k] !== undefined && data[k] !== '' ? data[k] : (cur[k] !== undefined ? cur[k] : d));
+  // Campos de texto/lista: string vazia enviada = LIMPAR (o assistente manda
+  // '' para "todos os estados"). Campos numéricos: '' = manter o atual, porque
+  // um <input type=number> vazio não é uma escolha.
+  const TEXT_FIELDS = new Set(['preferred_states', 'preferred_occupations', 'excluded_occupations',
+                               'english_level', 'dol_feed_url', 'available_from', 'available_to']);
+  const v = (k, d) => {
+    if (data[k] === undefined) return cur[k] !== undefined ? cur[k] : d;
+    if (data[k] === '' && !TEXT_FIELDS.has(k)) return cur[k] !== undefined ? cur[k] : d;
+    return data[k];
+  };
   const b = (k) => (data[k] !== undefined ? (data[k] ? 1 : 0) : cur[k]);
 
   const mode = AUTOMATION_MODES.includes(String(data.automation_mode)) ? data.automation_mode : cur.automation_mode;

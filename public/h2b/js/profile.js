@@ -23,6 +23,7 @@ H2B.profile = (function () {
   // ------------------------------------------------------------ abas
 
   function showTab(tab) {
+    if (ps.flush) ps.flush();
     ps.tab = tab;
     $$('#profile-subtabs .stab').forEach(b => b.classList.toggle('active', b.dataset.ptab === tab));
     ['me', 'cvs', 'num'].forEach(t => $('#ptab-' + t).classList.toggle('gone', t !== tab));
@@ -66,7 +67,8 @@ H2B.profile = (function () {
           <div class="field-row"><div class="field"><label>Idiomas</label><input class="input" id="pf-langs" value="${esc((p.languages || []).join(', '))}" placeholder="Portuguese, English (basic)"></div>${sel('english_level')}</div>
           <div class="field-row"><div class="field"><label>Certificações</label><input class="input" id="pf-certs" value="${esc((p.certifications || []).join(', '))}" placeholder="MOPP, NR-35, forklift"></div>${f(TEXT_LABEL.lifting_capacity, 'dp-lifting_capacity', d.lifting_capacity, 'Ex.: 50 lb')}</div>
           <div class="field-row">${f('Disponível a partir de', 'pf-from', p.availabilityFrom, 'AAAA-MM-DD')}${f('Disponível até', 'pf-to', p.availabilityTo, 'AAAA-MM-DD')}</div>
-          <button class="btn btn-primary" id="pf-save"><i class="ti ti-device-floppy"></i> Salvar dados</button>
+          <div class="hint">Cada campo é gravado no servidor assim que você sai dele. O botão só força a gravação agora.</div>
+          <button class="btn btn-primary" id="pf-save"><i class="ti ti-device-floppy"></i> Salvar agora</button>
         </div>
       </div>
       <div class="prof-card" style="margin-bottom:12px">
@@ -82,41 +84,54 @@ H2B.profile = (function () {
           <div class="field-row">${sel('driving_record')}${sel('manual_transmission_experience')}</div>
           <div class="field-row">${sel('long_distance_experience')}${sel('agricultural_hauling_experience')}</div>
           ${Object.entries(TEXT_LABEL).filter(([k]) => k !== 'lifting_capacity').map(([k, l]) => f(l, 'dp-' + k, d[k], '')).join('')}
-          <button class="btn btn-primary" id="dp-save"><i class="ti ti-shield-check"></i> Salvar perfil de motorista</button>
+          <button class="btn btn-primary" id="dp-save"><i class="ti ti-shield-check"></i> Salvar agora</button>
         </div>
       </div>
     `;
     $('#dp-head').onclick = () => { const b = $('#dp-body'); b.classList.toggle('gone'); const open = !b.classList.contains('gone'); $('#dp-head i:last-child').className = `ti ${open ? 'ti-chevron-up' : 'ti-chevron-down'}`; H2B.savePrefs({ driver_card_open: open }); };
-    $('#pf-save').onclick = async () => {
-      const list = (id) => $('#' + id).value.split(',').map(s => s.trim()).filter(Boolean);
-      try {
-        const r = await env().saveProfile({
-          full_name: $('#pf-name').value.trim(), email: $('#pf-email').value.trim(), phone: $('#pf-phone').value.trim(),
-          city: $('#pf-city').value.trim(), state: $('#pf-state').value.trim(), headline: $('#pf-headline').value.trim(),
-          summary: $('#pf-summary').value.trim(), years_of_experience: $('#pf-years').value, drivers_license: $('#pf-license').value.trim(),
-          availability_from: $('#pf-from').value.trim() || null, availability_to: $('#pf-to').value.trim() || null,
-          skills: list('pf-skills'), languages: list('pf-langs'), certifications: list('pf-certs'), industries: list('pf-industries')
-        });
-        // Inglês e capacidade de carga moram no perfil de motorista, mas valem para toda vaga.
-        await API.seasonal.saveDriverProfile({
-          english_level: $('[data-dp="english_level"]', el).value,
-          lifting_capacity: $('#dp-lifting_capacity').value.trim() || 'UNKNOWN'
-        }).catch(() => {});
-        state.profile = r.profile; ps.profile = r.profile; H2B.renderIdentity(); toast('Dados salvos', 'ok');
-        if (!r.profile.yearsOfExperience && r.profile.yearsOfExperience !== 0) toast('Dica: preencha os anos de experiência — vagas que pedem experiência mínima dependem disso', undefined, 5000);
-      } catch (e) { err(e); }
-    };
-    el.querySelectorAll('[data-int]').forEach(b => b.onclick = () => b.classList.toggle('on'));
-    $('#dp-save').onclick = async () => {
+    // ---- gravação: UMA rotina para as duas seções, disparada por qualquer
+    // mudança (autosave) e pelos botões. Nada fica só na tela.
+    const list = (id) => $('#' + id).value.split(',').map(x => x.trim()).filter(Boolean);
+    function collectGeneral() {
+      return {
+        full_name: $('#pf-name').value.trim(), email: $('#pf-email').value.trim(), phone: $('#pf-phone').value.trim(),
+        city: $('#pf-city').value.trim(), state: $('#pf-state').value.trim(), headline: $('#pf-headline').value.trim(),
+        summary: $('#pf-summary').value.trim(), years_of_experience: $('#pf-years').value, drivers_license: $('#pf-license').value.trim(),
+        availability_from: $('#pf-from').value.trim() || null, availability_to: $('#pf-to').value.trim() || null,
+        skills: list('pf-skills'), languages: list('pf-langs'), certifications: list('pf-certs'), industries: list('pf-industries')
+      };
+    }
+    function collectDriver() {
       const body = {};
-      $('[data-dp]', el).forEach(s => { body[s.dataset.dp] = s.value; });
-      Object.keys(NUM_LABEL).forEach(k => { const v = $('#dp-' + k).value; body[k] = v === '' ? 'UNKNOWN' : Number(v); });
+      $$('[data-dp]', el).forEach(x => { body[x.dataset.dp] = x.value; });
+      Object.keys(NUM_LABEL).forEach(k => { const inp = $('#dp-' + k); if (inp) body[k] = inp.value === '' ? 'UNKNOWN' : Number(inp.value); });
       Object.keys(TEXT_LABEL).forEach(k => { const inp = $('#dp-' + k); if (inp) body[k] = inp.value.trim() || 'UNKNOWN'; });
       body.h2a_interest = $('[data-int="h2a_interest"]', el).classList.contains('on');
       body.h2b_interest = $('[data-int="h2b_interest"]', el).classList.contains('on');
-      if (body.can_obtain_cdl !== 'UNKNOWN') body.can_obtain_cdl = body.can_obtain_cdl === '1';
-      try { await API.seasonal.saveDriverProfile(body); toast('Perfil de motorista salvo', 'ok'); renderMe(); } catch (e) { err(e); }
-    };
+      if (body.can_obtain_cdl !== undefined && body.can_obtain_cdl !== 'UNKNOWN') body.can_obtain_cdl = body.can_obtain_cdl === '1';
+      return body;
+    }
+    let saving = false, pending = false, saveTimer = null;
+    async function saveAll({ silent } = {}) {
+      if (saving) { pending = true; return; }
+      saving = true;
+      try {
+        const [r, d] = await Promise.all([env().saveProfile(collectGeneral()), API.seasonal.saveDriverProfile(collectDriver())]);
+        state.profile = r.profile; ps.profile = r.profile; ps.driver = d.profile || d; H2B.renderIdentity();
+        if (silent) H2B.saved('Perfil'); else toast('Perfil salvo no servidor', 'ok');
+      } catch (e) { err(e); }
+      saving = false;
+      if (pending) { pending = false; saveAll({ silent: true }); }
+    }
+    const scheduleSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => saveAll({ silent: true }), 700); };
+    // change = campo concluído (blur/enter/select); input em textos longos com debounce.
+    el.addEventListener('change', (ev) => { if (ev.target.matches('input, select, textarea')) scheduleSave(); });
+    el.addEventListener('input', (ev) => { if (ev.target.matches('textarea, input[type="text"], input[type="email"], input[type="number"]')) scheduleSave(); });
+    el.querySelectorAll('[data-int]').forEach(b => b.onclick = () => { b.classList.toggle('on'); scheduleSave(); });
+    $('#pf-save').onclick = () => { clearTimeout(saveTimer); saveAll(); };
+    $('#dp-save').onclick = () => { clearTimeout(saveTimer); saveAll(); };
+    // Saiu da tela com gravação pendente: grava agora.
+    ps.flush = () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveAll({ silent: true }); } };
   }
 
   // ------------------------------------------------------------ CURRÍCULOS
@@ -295,7 +310,22 @@ H2B.profile = (function () {
       if (ev.target.closest('#ed-up-cl')) { const f = $('#ed-file'); f.dataset.docType = 'cover_letter'; f.value = ''; f.click(); return; }
     };
     $('#ed-file').onchange = async (ev) => { const file = ev.target.files[0]; if (!file) return; await upload(file, ev.target.dataset.docType); await loadDocs(); renderEditor(); };
+    let edTimer = null;
+    const edAutosave = () => { clearTimeout(edTimer); edTimer = setTimeout(async () => {
+      try {
+        const t = await API.seasonal.saveTemplates({ subjects: ed.subjects.filter(x => x.content.trim()), bodies: ed.bodies.filter(x => x.content.trim()) });
+        // ids novos voltam do servidor — a próxima edição atualiza em vez de duplicar.
+        t.subjects.forEach((x, i) => { const local = ed.subjects.filter(y => y.content.trim())[i]; if (local) local.id = x.id; });
+        t.bodies.forEach((x, i) => { const local = ed.bodies.filter(y => y.content.trim())[i]; if (local) local.id = x.id; });
+        const sN = t.subjects.length, bN = t.bodies.length;
+        state.templates = { subjects: sN, bodies: bN, minimum: 3, ready: sN >= 1 && bN >= 1, recommended: sN >= 3 && bN >= 3 };
+        H2B.saved('Modelos de e-mail');
+      } catch (e) { err(e); }
+    }, 1200); };
+    body.addEventListener('input', (ev) => { if (ev.target.matches('[data-tc]')) edAutosave(); });
+    body.addEventListener('change', (ev) => { if (ev.target.matches('[data-tv]')) edAutosave(); });
     $('#ed-save').onclick = async () => {
+      clearTimeout(edTimer);
       try {
         const t = await API.seasonal.saveTemplates({ subjects: ed.subjects.filter(s => s.content.trim()), bodies: ed.bodies.filter(b => b.content.trim()) });
         const sN = t.subjects.length, bN = t.bodies.length;
