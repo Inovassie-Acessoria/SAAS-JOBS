@@ -1,0 +1,40 @@
+{
+  "name": "job-intelligence-platform",
+  "version": "2.0.0",
+  "description": "Plataforma de descoberta, análise ATS e priorização de vagas — Gupy, Indeed e Seasonal Jobs, como três produtos independentes.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/*.test.js\"",
+    "readiness": "node scripts/readiness.js",
+    "agents:check": "node -e \"const r=require('./services/agentOrchestrator').selfCheck();console.log(JSON.stringify(r,null,2));process.exit(r.ok?0:1)\"",
+    "lint": "node --check server.js && node --check config/database.js",
+    "migrate": "node -e \"require(\\\"./config/database\\\"); console.log(\\\"schema aplicado\\\")\"",
+    "browser:login": "node scripts/browserLogin.js",
+    "browser:check": "node scripts/browserCheck.js",
+    "browser:profiles": "node scripts/browserProfiles.js",
+    "deploy:prepare": "node scripts/prepareDeploy.js",
+    "backup": "node scripts/backup.js"
+  },
+  "keywords": [
+    "job-search",
+    "ats",
+    "h2a",
+    "h2b",
+    "gupy",
+    "indeed",
+    "seasonal-jobs"
+  ],
+  "author": "Antigravity",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^176.0.0",
+    "multer": "^1.4.5-lts.1",
+    "puppeteer-core": "^25.10.0"
+  }
+}

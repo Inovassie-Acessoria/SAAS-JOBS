@@ -1,0 +1,5 @@
+# Fim de linha LF no repositório (o deploy roda em Linux/Docker).
+* text=auto eol=lf
+*.png binary
+*.pdf binary
+*.db binary

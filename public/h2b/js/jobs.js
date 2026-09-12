@@ -1,0 +1,395 @@
+/**
+ * H2 Dream — tela de vagas: abas, busca com sugestões, filtros mestres,
+ * lista, detalhe (PC ao lado; celular em tela cheia), salvar/descartar e o
+ * botão de envio manual.
+ */
+H2B.jobs = (function () {
+  const { $, $$, esc, fmtUSDate, money, visaTag, toast, err, openModal, closeModal, state } = H2B;
+
+  const PAGE = 60;
+  const US_STATES = {
+    AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',
+    HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',
+    MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',
+    NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
+    SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Washington DC',PR:'Puerto Rico'
+  };
+  const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  const js = {
+    sheet: 'all',
+    q: '',
+    quick: { emailOnly: false, excludeApplied: false, housing: false },
+    sort: 'priority',
+    filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all' },
+    jobs: [],
+    offset: 0,
+    done: false,
+    selected: null,
+    facets: null,
+    loading: false
+  };
+
+  function restore() {
+    const f = state.prefs.filters;
+    if (f && typeof f === 'object') {
+      Object.assign(js.filters, f.filters || {});
+      Object.assign(js.quick, f.quick || {});
+      js.sort = f.sort || js.sort;
+    }
+    if (state.prefs.jobs_sheet) js.sheet = state.prefs.jobs_sheet;
+  }
+  function persist() {
+    H2B.savePrefs({ filters: { filters: js.filters, quick: js.quick, sort: js.sort }, jobs_sheet: js.sheet });
+  }
+
+  function params(offset) {
+    const p = { limit: PAGE, offset: offset || 0, sort: js.sort === 'priority' ? undefined : js.sort };
+    if (js.sheet === 'H-2A' || js.sheet === 'H-2B') { p.view = 'all'; p.visaType = js.sheet; }
+    else if (js.sheet === 'recommended' || js.sheet === 'saved' || js.sheet === 'applied') p.view = js.sheet;
+    else p.view = 'all';
+    if (js.filters.visa !== 'all' && !p.visaType) p.visaType = js.filters.visa;
+    if (js.q) p.q = js.q;
+    if (js.quick.emailOnly) p.emailOnly = 1;
+    if (js.quick.excludeApplied && js.sheet !== 'applied') p.excludeApplied = 1;
+    if (js.quick.housing) p.housing = 1;
+    if (js.filters.states.length) p.states = js.filters.states.join(',');
+    if (js.filters.city) p.city = js.filters.city;
+    if (js.filters.titles.length) p.titles = js.filters.titles.join(',');
+    if (js.filters.minWage !== '' && js.filters.minWage !== null) p.minWage = js.filters.minWage;
+    if (js.filters.minOpenings !== '' && js.filters.minOpenings !== null) p.minOpenings = js.filters.minOpenings;
+    if (js.filters.startMonths.length) p.startMonths = js.filters.startMonths.join(',');
+    return p;
+  }
+
+  function activeFilterCount() {
+    const f = js.filters;
+    return (f.states.length ? 1 : 0) + (f.city ? 1 : 0) + (f.titles.length ? 1 : 0) + (f.minWage !== '' ? 1 : 0)
+         + (f.minOpenings !== '' ? 1 : 0) + (f.startMonths.length ? 1 : 0) + (f.visa !== 'all' ? 1 : 0);
+  }
+
+  async function load(reset) {
+    if (js.loading) return;
+    js.loading = true;
+    if (reset) { js.offset = 0; js.done = false; js.jobs = []; $('#jlist').innerHTML = '<div style="padding:20px" class="skel"></div><div style="padding:20px;margin-top:6px" class="skel"></div><div style="padding:20px;margin-top:6px" class="skel"></div>'; }
+    try {
+      const r = await API.seasonal.listJobs(params(js.offset));
+      const rows = r.jobs || [];
+      js.jobs = js.offset ? js.jobs.concat(rows) : rows;
+      js.offset += rows.length;
+      js.done = rows.length < PAGE;
+      renderList();
+    } catch (e) { err(e); $('#jlist').innerHTML = `<div class="empty-state"><i class="ti ti-plug-connected-x"></i><p>Não consegui carregar as vagas</p><small>${esc(e.message)}</small></div>`; }
+    js.loading = false;
+  }
+
+  async function loadFacets() {
+    try {
+      js.facets = await API.seasonal.facets();
+      const t = js.facets.totals || {};
+      $('#cnt-all').textContent = t.total || 0;
+      $('#cnt-h2a').textContent = t.h2a || 0;
+      $('#cnt-h2b').textContent = t.h2b || 0;
+      $('#cnt-rec').textContent = t.recommended || 0;
+      $('#cnt-saved').textContent = t.saved || 0;
+      $('#cnt-applied').textContent = t.applied || 0;
+      $('#jlist-feed').textContent = t.lastFeed ? `feed ${H2B.fmtDate(t.lastFeed)}` : 'sem feed';
+    } catch (e) { /* silencioso */ }
+  }
+
+  // ------------------------------------------------------------ lista
+
+  function scoreTag(j) {
+    const s = j.opportunity_score;
+    if (s === null || s === undefined) return '';
+    const cls = s >= 70 ? 'tg' : s >= 45 ? 'ta' : 'tr';
+    return `<span class="tag ${cls}">★ ${s}</span>`;
+  }
+  function timelineTag(j) {
+    if (!j.timeline || !j.timeline.label) return '';
+    const cls = j.timeline.timelineClass === 'TARGET_2027' ? 'tp' : j.timeline.timelineClass === 'CURRENT' ? 'tg' : '';
+    return `<span class="tag ${cls}">${esc(j.timeline.label)}</span>`;
+  }
+  function card(j) {
+    const cat = j.categoryLabel || j.career_track || (j.soc_code ? `SOC ${j.soc_code}` : '');
+    const applied = j.is_applied ? ' applied' : '';
+    const active = js.selected && js.selected.id === j.id ? ' active' : '';
+    return `<div class="jcard${applied}${active}" data-id="${j.id}">
+      <button class="save-btn${j.is_saved ? ' on' : ''}" data-save="${j.id}" title="Salvar"><i class="ti ${j.is_saved ? 'ti-star-filled' : 'ti-star'}"></i></button>
+      <div class="jcard-title">${esc(j.job_title)}</div>
+      <div class="jcard-cat-row">${visaTag(j.visa_type)}${cat ? `<span class="jcard-cat-badge">${esc(cat)}</span>` : ''}</div>
+      <div class="jcard-co"><i class="ti ti-building"></i> ${esc(j.employer_name)} · ${esc(j.employer_city || '')}${j.employer_city ? ', ' : ''}${esc(j.employer_state || '')}</div>
+      <div class="jcard-tags">
+        <span class="tag tg">${money(j.wage_rate, j.wage_unit)}</span>
+        ${j.openings ? `<span class="tag">${j.openings} vaga${j.openings > 1 ? 's' : ''}</span>` : ''}
+        ${j.start_date ? `<span class="tag">📅 ${fmtUSDate(j.start_date)}</span>` : ''}
+        ${j.housing_provided ? '<span class="tag tb">🏠 moradia</span>' : ''}
+        ${j.isEmailEligible ? '<span class="tag tp">✉️ e-mail</span>' : '<span class="tag ta">📞 manual</span>'}
+        ${scoreTag(j)}${timelineTag(j)}
+      </div>
+    </div>`;
+  }
+  function renderList() {
+    const n = js.jobs.length;
+    $('#jcount').textContent = `${n}${js.done ? '' : '+'} vaga${n === 1 ? '' : 's'}`;
+    $('#jlist-more').classList.toggle('gone', js.done);
+    if (!n) {
+      $('#jlist').innerHTML = `<div class="empty-state"><i class="ti ti-mood-empty"></i><p>Nenhuma vaga aqui</p><small>${js.q || activeFilterCount() ? 'Tente afrouxar a busca ou os filtros.' : 'Importe o feed do DOL em Configurações.'}</small></div>`;
+      return;
+    }
+    $('#jlist').innerHTML = js.jobs.map(card).join('');
+    renderActiveFilters();
+  }
+  function renderActiveFilters() {
+    const chips = [];
+    const f = js.filters;
+    if (f.visa !== 'all') chips.push({ k: 'visa', l: f.visa });
+    f.states.forEach(s => chips.push({ k: 'state', v: s, l: s }));
+    if (f.city) chips.push({ k: 'city', l: `📍 ${f.city}` });
+    f.titles.forEach(t => chips.push({ k: 'title', v: t, l: t }));
+    if (f.minWage !== '') chips.push({ k: 'minWage', l: `≥ $${f.minWage}/h` });
+    if (f.minOpenings !== '') chips.push({ k: 'minOpenings', l: `≥ ${f.minOpenings} vagas` });
+    f.startMonths.forEach(m => chips.push({ k: 'month', v: m, l: `início ${MONTHS[Number(m) - 1]}` }));
+    const n = activeFilterCount();
+    const badge = $('#filter-badge'); badge.textContent = n; badge.style.display = n ? 'inline-block' : 'none';
+    $('#active-filters').innerHTML = chips.map(c => `<button class="filter-chip-x" data-fk="${c.k}" data-fv="${esc(c.v || '')}">${esc(c.l)} <b>×</b></button>`).join('')
+      + (chips.length > 1 ? `<button class="filter-chip-x" data-fk="all" style="background:var(--sf3);border-color:var(--border2);color:var(--t2)">limpar tudo</button>` : '');
+    $$('#f-email, #f-notapplied, #f-housing').forEach(b => b.classList.toggle('on', Boolean(js.quick[b.dataset.f])));
+  }
+  function removeFilter(k, v) {
+    const f = js.filters;
+    if (k === 'all') Object.assign(f, { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all' });
+    else if (k === 'visa') f.visa = 'all';
+    else if (k === 'state') f.states = f.states.filter(x => x !== v);
+    else if (k === 'city') f.city = '';
+    else if (k === 'title') f.titles = f.titles.filter(x => x !== v);
+    else if (k === 'minWage') f.minWage = '';
+    else if (k === 'minOpenings') f.minOpenings = '';
+    else if (k === 'month') f.startMonths = f.startMonths.filter(x => x !== v);
+    persist(); load(true);
+  }
+
+  // ------------------------------------------------------------ detalhe
+
+  function detailHTML(j) {
+    const pkg = j.package || null;
+    const contact = [];
+    if (j.application_email) contact.push(`<div class="info-box"><div class="info-lbl">E-mail de candidatura</div><div class="info-val" style="color:var(--blue)">${esc(j.application_email)}</div></div>`);
+    if (j.employer_email && j.employer_email !== j.application_email) contact.push(`<div class="info-box"><div class="info-lbl">E-mail do empregador</div><div class="info-val">${esc(j.employer_email)}</div></div>`);
+    if (j.employer_phone) contact.push(`<div class="info-box"><div class="info-lbl">Telefone</div><div class="info-val">${esc(j.employer_phone)}</div></div>`);
+    if (j.application_url) contact.push(`<div class="info-box"><div class="info-lbl">Site</div><div class="info-val"><a href="${esc(j.application_url)}" target="_blank" rel="noopener" style="color:var(--blue)">abrir ↗</a></div></div>`);
+    if (j.attorney_email) contact.push(`<div class="info-box"><div class="info-lbl">Advogado / agente</div><div class="info-val">${esc(j.attorney_name || '')}<br>${esc(j.attorney_email)}</div></div>`);
+
+    const txt = (c) => typeof c === 'string' ? c : [c.title || c.label || c.message, c.detail].filter(Boolean).join(' — ') || JSON.stringify(c);
+    const warnings = (j.warnings || []).map(txt).concat((j.concerns || []).map(txt));
+    const isTruck = j.truck_classification && !/^NOT_/.test(String(j.truck_classification));
+    const gate = isTruck ? `<div class="alert al-amber"><i class="ti ti-truck"></i><div><b>Vaga de caminhão</b>${j.cdl_requirement ? ' — CDL: ' + esc(j.cdl_requirement) : ''}. O sistema só envia se o seu perfil de motorista sustentar o que a vaga pede.</div></div>` : '';
+
+    let sendBtn;
+    if (j.is_applied) sendBtn = `<button class="btn btn-success" disabled><i class="ti ti-check"></i> Já enviada</button>`;
+    else if (j.isEmailEligible || j.employer_email || j.attorney_email) sendBtn = `<button class="btn btn-primary" data-send="${j.id}"><i class="ti ti-send"></i> Enviar candidatura</button>`;
+    else sendBtn = `<button class="btn btn-secondary" disabled title="Sem e-mail: candidatura por telefone ou site"><i class="ti ti-phone"></i> Ação manual</button>`;
+
+    return `
+      <div class="jd-title">${esc(j.job_title)}</div>
+      <div class="jd-co"><i class="ti ti-building"></i> ${esc(j.employer_name)} · ${esc(j.employer_city || '')}${j.employer_city ? ', ' : ''}${esc(US_STATES[j.employer_state] || j.employer_state || '')}</div>
+      <div class="jd-tags">${visaTag(j.visa_type)}${scoreTag(j)}${timelineTag(j)}${j.fit_score !== null && j.fit_score !== undefined ? `<span class="tag">fit ${j.fit_score}</span>` : ''}${j.ats_score !== null && j.ats_score !== undefined ? `<span class="tag">ATS ${j.ats_score}</span>` : ''}<span class="tag">#${esc(j.job_order_id)}</span></div>
+      ${gate}
+      <div class="jd-acts">${sendBtn}
+        <button class="btn btn-secondary" data-save2="${j.id}"><i class="ti ${j.is_saved ? 'ti-star-filled' : 'ti-star'}"></i> ${j.is_saved ? 'Salva' : 'Salvar'}</button>
+        <button class="btn btn-secondary" data-discard="${j.id}"><i class="ti ti-trash"></i> Descartar</button>
+      </div>
+      <div class="info-grid">
+        <div class="info-box"><div class="info-lbl">Salário</div><div class="info-val">${money(j.wage_rate, j.wage_unit)}</div></div>
+        <div class="info-box"><div class="info-lbl">Vagas</div><div class="info-val">${j.openings || '—'}</div></div>
+        <div class="info-box"><div class="info-lbl">Horas/semana</div><div class="info-val">${j.weekly_hours || '—'}</div></div>
+        <div class="info-box"><div class="info-lbl">Início</div><div class="info-val">${fmtUSDate(j.start_date)}</div></div>
+        <div class="info-box"><div class="info-lbl">Término</div><div class="info-val">${fmtUSDate(j.end_date)}</div></div>
+        <div class="info-box"><div class="info-lbl">Moradia / transporte</div><div class="info-val">${j.housing_provided ? '🏠 sim' : '—'} ${j.transportation_provided ? '🚌 sim' : ''}</div></div>
+        <div class="info-box"><div class="info-lbl">Como se candidatar</div><div class="info-val">${esc(j.application_method || 'UNKNOWN')}</div></div>
+        <div class="info-box"><div class="info-lbl">Código SOC</div><div class="info-val">${esc(j.soc_code || '—')}</div></div>
+        <div class="info-box"><div class="info-lbl">Visto no feed</div><div class="info-val">${j.first_seen_feed ? H2B.fmtDate(j.first_seen_feed) : '—'}${j.feed_appearances ? ` · ${j.feed_appearances}×` : ''}</div></div>
+      </div>
+      ${contact.length ? `<div class="jd-section-title">Contato</div><div class="info-grid">${contact.join('')}</div>` : ''}
+      ${warnings.length ? `<div class="jd-section-title">Atenção</div>${warnings.map(w => `<div class="alert al-amber" style="margin-bottom:6px"><i class="ti ti-alert-triangle"></i><div>${esc(w)}</div></div>`).join('')}` : ''}
+      ${pkg ? `<div class="jd-section-title">Pacote preparado</div><div class="alert ${pkg.validation_status === 'PASSED' ? 'al-green' : 'al-red'}"><i class="ti ti-package"></i><div><b>${esc(pkg.validation_status)}</b>${pkg.requires_review ? ' · aguarda revisão' : ''}${j.queue_status ? ` · fila: ${esc(j.queue_status)}` : ''}</div></div>` : ''}
+      <div class="jd-section-title">Descrição da vaga</div>
+      <div class="jd-desc">${esc(j.duties_description || 'Sem descrição no feed.')}</div>
+      ${j.special_requirements ? `<div class="jd-section-title">Requisitos</div><div class="jd-desc">${esc(j.special_requirements)}</div>` : ''}
+      ${(j.requirements || []).length ? `<div class="jd-section-title">Requisitos detectados</div><div class="jd-tags">${j.requirements.map(r => `<span class="tag ${r.status === 'MET' ? 'tg' : r.status === 'UNMET' ? 'tr' : 'ta'}">${esc(r.label || r.text || r)}</span>`).join('')}</div>` : ''}
+      ${(j.emailHistory || []).length ? `<div class="jd-section-title">Eventos de e-mail</div>${j.emailHistory.slice(0, 8).map(e => `<div style="font-size:12px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--border)"><b>${esc(e.event_type || e.event)}</b> · ${H2B.fmtDateTime(e.created_at)} — ${esc(e.detail || e.message || '')}</div>`).join('')}` : ''}
+    `;
+  }
+
+  async function select(id) {
+    const mobile = window.matchMedia('(max-width:767px)').matches || document.documentElement.classList.contains('force-cel');
+    const target = mobile ? $('#mob-jd-content') : $('#jd-content');
+    $$('.jcard').forEach(c => c.classList.toggle('active', Number(c.dataset.id) === Number(id)));
+    if (mobile) $('#mob-detail').classList.add('show');
+    else { $('#jd-empty').classList.add('gone'); $('#jd-content').classList.remove('gone'); }
+    target.innerHTML = '<div class="skel" style="height:120px"></div>';
+    try {
+      const r = await API.seasonal.getJob(id);
+      js.selected = Object.assign(r.job, { package: r.package });
+      target.innerHTML = detailHTML(js.selected);
+      target.scrollTop = 0;
+    } catch (e) { target.innerHTML = `<div class="empty-state"><i class="ti ti-alert-circle"></i><p>${esc(e.message)}</p></div>`; }
+  }
+
+  async function toggleSave(id) {
+    const j = js.jobs.find(x => x.id === Number(id)) || js.selected;
+    try {
+      // Não existe "des-salvar" no backend: para tirar da lista de salvas, o
+      // usuário descarta a vaga. O botão fica como "Salva".
+      if (j && j.is_saved) { toast('Já estava salva. Para tirar, descarte a vaga.'); return; }
+      await API.seasonal.saveJob(id, '');
+      toast('Vaga salva ⭐', 'ok');
+      if (j) j.is_saved = 1;
+      renderList(); if (js.selected && js.selected.id === Number(id)) select(id);
+      loadFacets();
+    } catch (e) { err(e); }
+  }
+  function discard(id) {
+    H2B.warn({
+      icon: '🗑️', title: 'Descartar esta vaga?', text: 'Ela some da lista e o robô não envia para ela. Dá para reverter na aba Configurações › Descartadas.',
+      danger: 'Descartar', okLabel: 'Cancelar',
+      onDanger: async () => {
+        try { await API.seasonal.discardJob(id, 'descartada pelo usuário'); toast('Vaga descartada'); js.selected = null; $('#mob-detail').classList.remove('show'); $('#jd-content').classList.add('gone'); $('#jd-empty').classList.remove('gone'); load(true); loadFacets(); }
+        catch (e) { err(e); }
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ sugestões
+
+  let sugTimer = null;
+  async function suggest(q) {
+    const box = $('#jobs-sug');
+    if (!q || q.length < 2) { box.classList.remove('open'); return; }
+    try {
+      const r = await API.seasonal.suggest(q);
+      const by = {};
+      (r.suggestions || []).forEach(s => { (by[s.kind] = by[s.kind] || []).push(s); });
+      const LBL = { employer: 'Empresas', title: 'Cargos', city: 'Cidades', order: 'Ordens' };
+      const ICO = { employer: 'ti-building', title: 'ti-briefcase', city: 'ti-map-pin', order: 'ti-hash' };
+      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+      let html = '';
+      for (const k of ['employer', 'title', 'city', 'order']) {
+        if (!by[k]) continue;
+        html += `<div class="q-sug-grp">${LBL[k]}</div>` + by[k].slice(0, 5).map(s =>
+          `<div class="q-sug-it" data-q="${esc(s.label)}" ${s.id ? `data-job="${s.id}"` : ''}><i class="ti ${ICO[k]}"></i><span>${esc(s.label).replace(re, '<b>$1</b>')}</span><span class="q-sug-meta">${s.total ? s.total + ' vaga' + (s.total > 1 ? 's' : '') : esc(s.meta || '')}</span></div>`).join('');
+      }
+      box.innerHTML = html;
+      box.classList.toggle('open', Boolean(html));
+    } catch (e) { box.classList.remove('open'); }
+  }
+
+  // ------------------------------------------------------------ filtros (modal)
+
+  function openFilters() {
+    const f = js.filters;
+    const fac = js.facets || { states: [], titles: [], months: [] };
+    const stateOpts = (fac.states || []).map(s => `<option value="${s.state}">${esc(US_STATES[s.state] || s.state)} (${s.total})</option>`).join('');
+    const titleOpts = (fac.titles || []).map(t => `<label class="mf-check-row"><input type="checkbox" data-title="${esc(t.title)}" ${f.titles.includes(t.title) ? 'checked' : ''}> <span style="flex:1;font-weight:600">${esc(t.title)}</span><span class="tag">${t.total}</span></label>`).join('');
+    const monthCount = Object.fromEntries((fac.months || []).map(m => [m.month, m.total]));
+    $('#mf-body').innerHTML = `
+      <div class="mf-sec"><div class="mf-sec-title"><i class="ti ti-id-badge"></i> Tipo de visto</div>
+        <div class="cat-chips-row">
+          <button class="cat-chip-sel ${f.visa === 'all' ? 'sel' : ''}" data-visa="all">Todos</button>
+          <button class="cat-chip-sel ${f.visa === 'H-2A' ? 'sel' : ''}" data-visa="H-2A">🌾 H-2A (agro)</button>
+          <button class="cat-chip-sel ${f.visa === 'H-2B' ? 'sel' : ''}" data-visa="H-2B">🏨 H-2B (não-agro)</button>
+        </div></div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-map-pin"></i> Estados</div>
+        <div style="display:flex;gap:6px"><select class="mf-select" id="mf-state-sel"><option value="">Adicionar estado…</option>${stateOpts}</select></div>
+        <div id="mf-states" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">${f.states.map(s => `<span class="mf-state-chip">${s} <button data-rm-state="${s}">×</button></span>`).join('')}</div></div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-building-community"></i> Cidade</div>
+        <input class="mf-input" id="mf-city" placeholder="Ex.: Fresno" value="${esc(f.city)}"></div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-briefcase"></i> Cargos <span class="tag" id="mf-title-cnt">${f.titles.length}</span></div>
+        <input class="mf-input" id="mf-title-q" placeholder="Filtrar a lista de cargos…" style="margin-bottom:6px">
+        <div class="mf-scroll-list" id="mf-titles">${titleOpts || '<div class="hint" style="padding:8px">Importe o feed para ver os cargos.</div>'}</div></div>
+      <div class="mf-row2" style="margin-top:14px">
+        <div class="mf-sec"><div class="mf-sec-title"><i class="ti ti-cash"></i> Salário mín. ($/h)</div><input class="mf-input" id="mf-wage" type="number" step="0.5" min="0" value="${esc(f.minWage)}" placeholder="Ex.: 16"></div>
+        <div class="mf-sec"><div class="mf-sec-title"><i class="ti ti-users"></i> Mín. de vagas</div><input class="mf-input" id="mf-open" type="number" min="1" value="${esc(f.minOpenings)}" placeholder="Ex.: 5"></div>
+      </div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-calendar"></i> Mês de início</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${MONTHS.map((m, i) => { const k = String(i + 1).padStart(2, '0'); return `<button class="mf-month ${f.startMonths.includes(k) ? 'on' : ''}" data-month="${k}">${m}${monthCount[k] ? ` <span style="opacity:.6">${monthCount[k]}</span>` : ''}</button>`; }).join('')}</div></div>
+    `;
+    const body = $('#mf-body');
+    body.onclick = (ev) => {
+      const v = ev.target.closest('[data-visa]'); if (v) { $$('[data-visa]', body).forEach(b => b.classList.toggle('sel', b === v)); return; }
+      const m = ev.target.closest('[data-month]'); if (m) { m.classList.toggle('on'); return; }
+      const rm = ev.target.closest('[data-rm-state]'); if (rm) { rm.parentElement.remove(); return; }
+    };
+    $('#mf-state-sel').onchange = (ev) => {
+      const s = ev.target.value; if (!s) return;
+      if (!$$('#mf-states .mf-state-chip').some(c => c.textContent.trim().startsWith(s))) $('#mf-states').insertAdjacentHTML('beforeend', `<span class="mf-state-chip">${s} <button data-rm-state="${s}">×</button></span>`);
+      ev.target.value = '';
+    };
+    $('#mf-title-q').oninput = (ev) => {
+      const q = ev.target.value.toLowerCase();
+      $$('#mf-titles label').forEach(l => { l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+    };
+    $('#mf-titles').onchange = () => { $('#mf-title-cnt').textContent = $$('#mf-titles input:checked').length; };
+    openModal('filters-modal');
+  }
+  function applyFilters() {
+    const f = js.filters;
+    f.visa = ($('#mf-body [data-visa].sel') || {}).dataset ? $('#mf-body [data-visa].sel').dataset.visa : 'all';
+    f.states = $$('#mf-states [data-rm-state]').map(b => b.dataset.rmState);
+    f.city = $('#mf-city').value.trim();
+    f.titles = $$('#mf-titles input:checked').map(i => i.dataset.title);
+    f.minWage = $('#mf-wage').value.trim();
+    f.minOpenings = $('#mf-open').value.trim();
+    f.startMonths = $$('#mf-body .mf-month.on').map(b => b.dataset.month);
+    persist(); closeModal('filters-modal'); load(true);
+  }
+
+  // ------------------------------------------------------------ wiring
+
+  function wire() {
+    $('#jobs-tabs').onclick = (ev) => {
+      const t = ev.target.closest('.stab'); if (!t) return;
+      $$('#jobs-tabs .stab').forEach(x => x.classList.toggle('active', x === t));
+      js.sheet = t.dataset.sheet; persist(); load(true);
+    };
+    const q = $('#jobs-q');
+    q.oninput = () => { clearTimeout(sugTimer); sugTimer = setTimeout(() => { suggest(q.value.trim()); js.q = q.value.trim(); load(true); }, 280); };
+    q.onkeydown = (ev) => { if (ev.key === 'Enter') { $('#jobs-sug').classList.remove('open'); js.q = q.value.trim(); load(true); } if (ev.key === 'Escape') $('#jobs-sug').classList.remove('open'); };
+    q.onblur = () => setTimeout(() => $('#jobs-sug').classList.remove('open'), 180);
+    $('#jobs-sug').onmousedown = (ev) => {
+      const it = ev.target.closest('.q-sug-it'); if (!it) return;
+      ev.preventDefault();
+      if (it.dataset.job) { select(it.dataset.job); $('#jobs-sug').classList.remove('open'); return; }
+      q.value = it.dataset.q; js.q = it.dataset.q; $('#jobs-sug').classList.remove('open'); load(true);
+    };
+    $$('#f-email, #f-notapplied, #f-housing').forEach(b => b.onclick = () => { js.quick[b.dataset.f] = !js.quick[b.dataset.f]; persist(); load(true); });
+    $('#f-sort').onchange = (ev) => { js.sort = ev.target.value; persist(); load(true); };
+    $('#btn-filters').onclick = openFilters;
+    $('#mf-apply').onclick = applyFilters;
+    $('#mf-clear').onclick = () => { removeFilter('all'); closeModal('filters-modal'); };
+    $('#active-filters').onclick = (ev) => { const c = ev.target.closest('[data-fk]'); if (c) removeFilter(c.dataset.fk, c.dataset.fv); };
+    $('#btn-more').onclick = () => load(false);
+    $('#jlist').onclick = (ev) => {
+      const s = ev.target.closest('[data-save]'); if (s) { ev.stopPropagation(); toggleSave(s.dataset.save); return; }
+      const c = ev.target.closest('.jcard'); if (c) select(c.dataset.id);
+    };
+    const detailClick = (ev) => {
+      const send = ev.target.closest('[data-send]'); if (send) { H2B.send.openManual(js.selected); return; }
+      const sv2 = ev.target.closest('[data-save2]'); if (sv2) { toggleSave(sv2.dataset.save2); return; }
+      const d = ev.target.closest('[data-discard]'); if (d) { discard(d.dataset.discard); return; }
+    };
+    $('#jd-content').onclick = detailClick;
+    $('#mob-jd-content').onclick = detailClick;
+  }
+
+  H2B.onShow.jobs = (opts) => {
+    if (!js.wired) { restore(); wire(); js.wired = true; $('#f-sort').value = js.sort; $$('#jobs-tabs .stab').forEach(x => x.classList.toggle('active', x.dataset.sheet === js.sheet)); }
+    if (opts && opts.sheet) { js.sheet = opts.sheet; $$('#jobs-tabs .stab').forEach(x => x.classList.toggle('active', x.dataset.sheet === js.sheet)); }
+    if (opts && opts.q !== undefined) { js.q = opts.q; $('#jobs-q').value = opts.q; }
+    loadFacets();
+    load(true);
+    if (opts && opts.jobId) select(opts.jobId);
+  };
+
+  return { js, load, loadFacets, select, US_STATES, MONTHS, detailHTML, refreshSelected: () => js.selected && select(js.selected.id) };
+})();

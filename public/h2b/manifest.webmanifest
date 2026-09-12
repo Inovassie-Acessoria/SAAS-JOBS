@@ -1,0 +1,17 @@
+{
+  "name": "H2 Dream — Vagas H-2A e H-2B",
+  "short_name": "H2 Dream",
+  "description": "Encontra vagas H-2A/H-2B no feed do DOL e envia candidaturas por e-mail.",
+  "start_url": "/h2b/",
+  "scope": "/h2b/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/h2b/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/h2b/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/h2b/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

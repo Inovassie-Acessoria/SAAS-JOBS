@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>H2 Dream — Vagas H-2A e H-2B</title>
+<link rel="manifest" href="/h2b/manifest.webmanifest">
+<link rel="icon" href="/h2b/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/h2b/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/h2b/css/base.css">
+<link rel="stylesheet" href="/h2b/css/layout.css">
+<link rel="stylesheet" href="/h2b/css/views.css">
+<script>
+  // Tema e modo de tela antes do primeiro paint — sem piscar branco no escuro.
+  (function(){try{
+    var t=localStorage.getItem('h2b_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');
+    var m=localStorage.getItem('h2b_screen_mode');if(m==='cel')document.documentElement.classList.add('force-cel');else if(m==='pc')document.documentElement.classList.add('force-pc');
+  }catch(e){}})();
+</script>
+</head>
+<body>
+
+<!-- ═══════════ SPLASH ═══════════ -->
+<div id="h2b-splash">
+  <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:38px;box-shadow:0 12px 40px rgba(99,102,241,.4)">🚀</div>
+  <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:900;letter-spacing:-.02em;background:linear-gradient(135deg,#7c3aed,#a855f7 60%,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">H2 Dream</div>
+  <div style="width:160px;height:4px;background:#ede9fe;border-radius:2px;overflow:hidden"><div style="height:100%;background:linear-gradient(90deg,#4f46e5,#7c3aed);animation:h2bBar 1.4s ease forwards"></div></div>
+  <div id="splash-msg" style="font-size:12px;color:#7c7fb5;font-weight:600">Carregando suas vagas…</div>
+</div>
+
+<!-- ═══════════ APP ═══════════ -->
+<div id="app">
+
+  <!-- ── HEADER ── -->
+  <header class="app-hdr">
+    <div class="app-logo-icon">🚀</div>
+    <div class="app-logo-text">H2 Dream</div>
+    <div class="hdr-right">
+      <button class="av-btn" id="theme-toggle-btn" title="Alternar tema" aria-label="Alternar tema" style="background:var(--sf3);color:var(--t2)"><i class="ti ti-moon" style="font-size:18px"></i></button>
+      <button class="av-btn" id="hdr-notif-btn" title="Notificações" aria-label="Notificações" style="background:var(--sf3);color:var(--t2);position:relative">
+        <i class="ti ti-bell" style="font-size:18px"></i>
+        <span id="hdr-notif-badge" class="bn-badge gone" style="position:absolute;top:-2px;right:-2px"></span>
+      </button>
+      <button id="hdr-menu-btn" aria-label="Abrir menu"><span style="font-size:12px;font-weight:800;color:#fff;letter-spacing:.04em">MENU</span><i class="ti ti-menu-2"></i></button>
+      <div class="av-btn" id="hdr-av" title="Perfil" data-sv="profile">G</div>
+    </div>
+  </header>
+
+  <div class="app-body">
+
+    <!-- ── SIDEBAR (desktop) ── -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sb-sec">
+        <button class="sb-item sb-item-menu" id="sb-auto-open"><i class="ti ti-rocket"></i> ENVIO AUTOMÁTICO <span class="sb-badge sb-badge-g gone" id="sb-auto-badge">ON</span></button>
+      </div>
+      <div class="sb-sec">
+        <div class="sb-lbl">Navegação</div>
+        <button class="sb-item" data-sv="home"><i class="ti ti-home"></i> Início</button>
+        <button class="sb-item" data-sv="jobs"><i class="ti ti-briefcase"></i> Vagas <span class="sb-badge sb-badge-b" id="sb-jobs-badge">0</span></button>
+        <button class="sb-item" data-sv="hist"><i class="ti ti-history"></i> Histórico <span class="sb-badge sb-badge-g" id="sb-hist-badge">0</span></button>
+        <button class="sb-item" data-sv="pesquisa"><i class="ti ti-search"></i> Pesquisa</button>
+        <button class="sb-item" data-sv="logs"><i class="ti ti-list-details"></i> Logs de envio</button>
+      </div>
+      <div class="sb-sec">
+        <div class="sb-lbl">Conta</div>
+        <button class="sb-item" data-sv="profile"><i class="ti ti-user"></i> Meu perfil</button>
+        <button class="sb-item" data-sv="notif"><i class="ti ti-bell"></i> Notificações <span class="sb-badge sb-badge-r gone" id="sb-notif-badge">0</span></button>
+        <button class="sb-item" data-sv="news"><i class="ti ti-news"></i> Notícias DOL</button>
+        <button class="sb-item" data-sv="settings"><i class="ti ti-settings"></i> Configurações</button>
+      </div>
+      <div style="flex:1"></div>
+      <div class="sb-sec">
+        <div class="sb-lbl">Modo de tela</div>
+        <div style="display:flex;gap:4px;padding:0 3px 6px">
+          <button class="sbm-btn" data-mode="auto"><i class="ti ti-device-desktop-analytics"></i> Auto</button>
+          <button class="sbm-btn" data-mode="cel"><i class="ti ti-device-mobile"></i> Celular</button>
+          <button class="sbm-btn" data-mode="pc"><i class="ti ti-device-laptop"></i> PC</button>
+        </div>
+      </div>
+      <div class="sb-profile" style="display:flex;align-items:center;gap:9px;cursor:pointer" data-sv="profile">
+        <div class="sb-av" id="sb-av">G</div>
+        <div style="min-width:0;flex:1">
+          <div id="sb-name" style="font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Seu nome</div>
+          <div id="sb-email" style="font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        </div>
+      </div>
+      <div style="padding:0 3px 8px"><button id="theme-toggle-btn-sidebar" title="Tema" aria-label="Alternar tema"><i class="ti ti-moon"></i> <span id="theme-lbl-sidebar">Tema escuro</span></button></div>
+    </nav>
+
+    <!-- ── MAIN ── -->
+    <main class="main-area" id="main-area">
+
+      <!-- ══ HOME ══ -->
+      <section class="view" id="v-home">
+        <div class="home-view">
+          <div style="padding:14px 14px 20px;display:flex;flex-direction:column;gap:14px">
+            <div class="home-header">
+              <div class="home-greeting" id="home-greeting">Bom dia,</div>
+              <div class="home-name" id="home-name">Candidato</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <span class="tag" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.25)" id="home-tag-visa">🌾 H-2A · 🏨 H-2B</span>
+                <span class="tag" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.25)" id="home-tag-quota">0/300 hoje</span>
+              </div>
+              <div class="home-hero-rocket">🚀</div>
+            </div>
+
+            <div id="home-next-step" class="home-next-step gone">
+              <div class="home-next-icon">👉</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.05em">Próximo passo</div>
+                <div id="home-next-title" style="font-size:14px;font-weight:800;line-height:1.3"></div>
+                <div id="home-next-sub" style="font-size:12px;color:var(--t2);margin-top:2px"></div>
+              </div>
+              <button class="btn btn-primary btn-sm" id="home-next-btn">Ir</button>
+            </div>
+
+            <div class="home-auto-card" id="home-auto-card">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div class="home-cta-icon">🚀</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-family:'Sora',sans-serif;font-size:17px;font-weight:900">Envio automático</div>
+                  <div style="font-size:12.5px;opacity:.9;margin-top:2px" id="home-auto-sub">Configure uma vez, o sistema envia por você todo dia.</div>
+                </div>
+                <div class="home-cta-arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+            </div>
+
+            <div class="home-manual-card" data-sv="jobs">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div class="home-cta-icon">📋</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-family:'Sora',sans-serif;font-size:17px;font-weight:900">Ver vagas e enviar manual</div>
+                  <div style="font-size:12.5px;opacity:.9;margin-top:2px" id="home-manual-sub">Escolha a vaga, revise o e-mail e envie na hora.</div>
+                </div>
+                <div class="home-cta-arrow"><i class="ti ti-chevron-right"></i></div>
+              </div>
+            </div>
+
+            <div class="home-stat-cards">
+              <div class="home-stat-card" data-sv="jobs"><div class="home-stat-val" style="color:var(--blue)" id="hs-jobs">0</div><div class="home-stat-lbl">Vagas abertas</div></div>
+              <div class="home-stat-card" data-sv="hist"><div class="home-stat-val" style="color:var(--green)" id="hs-sent">0</div><div class="home-stat-lbl">Enviados</div></div>
+              <div class="home-stat-card" data-sv="logs"><div class="home-stat-val" style="color:var(--purple)" id="hs-today">0</div><div class="home-stat-lbl">Hoje</div></div>
+            </div>
+
+            <div class="home-card">
+              <div class="home-section-title">Atalhos</div>
+              <div class="home-shortcuts">
+                <button class="home-shortcut" data-sv="profile" data-subtab="cvs"><div class="home-shortcut-icon" style="background:#eff6ff">📄</div><div class="home-shortcut-label">Meus currículos</div></button>
+                <button class="home-shortcut" id="hs-editor"><div class="home-shortcut-icon" style="background:#f5f3ff">✉️</div><div class="home-shortcut-label">Modelos de e-mail</div></button>
+                <button class="home-shortcut" data-sv="settings"><div class="home-shortcut-icon" style="background:#ecfdf5">📮</div><div class="home-shortcut-label">Contas Gmail</div></button>
+                <button class="home-shortcut" data-sv="pesquisa"><div class="home-shortcut-icon" style="background:#fffbeb">🔎</div><div class="home-shortcut-label">Pesquisar</div></button>
+                <button class="home-shortcut" data-sv="news"><div class="home-shortcut-icon" style="background:#fef2f2">📰</div><div class="home-shortcut-label">Notícias DOL</div></button>
+                <button class="home-shortcut" id="hs-tour"><div class="home-shortcut-icon" style="background:#f0f9ff">🧭</div><div class="home-shortcut-label">Tour do app</div></button>
+              </div>
+            </div>
+
+            <div class="home-card" id="home-attention-card">
+              <div class="home-section-title">Atenção</div>
+              <div id="home-attention" style="display:flex;flex-direction:column;gap:8px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ VAGAS ══ -->
+      <section class="view gone" id="v-jobs">
+        <div class="stabs" id="jobs-tabs">
+          <button class="stab active" data-sheet="all"><span>Todas</span><span class="stab-cnt" id="cnt-all">0</span></button>
+          <button class="stab stab-sheet-h2a" data-sheet="H-2A"><span>Agro</span><span class="stab-cnt" id="cnt-h2a">0</span></button>
+          <button class="stab stab-sheet-h2b" data-sheet="H-2B"><span>Não-agro</span><span class="stab-cnt" id="cnt-h2b">0</span></button>
+          <button class="stab" data-sheet="recommended"><span>Recomendadas</span><span class="stab-cnt" id="cnt-rec">0</span></button>
+          <button class="stab" data-sheet="saved"><span>Salvas</span><span class="stab-cnt" id="cnt-saved">0</span></button>
+          <button class="stab" data-sheet="applied"><span>Enviadas</span><span class="stab-cnt" id="cnt-applied">0</span></button>
+        </div>
+        <div class="search-bar">
+          <div class="search-wrap">
+            <i class="ti ti-search"></i>
+            <input class="search-inp" id="jobs-q" placeholder="Buscar vaga, empresa, cidade ou nº da ordem…" autocomplete="off">
+            <div class="q-sug" id="jobs-sug"></div>
+          </div>
+          <div class="filters-row">
+            <button class="fbtn filters-main" id="btn-filters"><i class="ti ti-adjustments-horizontal"></i> Filtros <span class="filter-badge" id="filter-badge">0</span></button>
+            <button class="fbtn" id="f-email" data-f="emailOnly"><i class="ti ti-mail"></i> Só com e-mail</button>
+            <button class="fbtn" id="f-notapplied" data-f="excludeApplied"><i class="ti ti-eye-off"></i> Ocultar enviadas</button>
+            <button class="fbtn" id="f-housing" data-f="housing"><i class="ti ti-home"></i> Com moradia</button>
+            <select class="fsel" id="f-sort">
+              <option value="priority">Prioridade</option>
+              <option value="wage">Maior salário</option>
+              <option value="start">Início mais próximo</option>
+              <option value="openings">Mais vagas</option>
+              <option value="recent">Mais recentes</option>
+            </select>
+          </div>
+          <div id="active-filters" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px"></div>
+        </div>
+        <div class="jobs-view">
+          <div class="jlist-panel" id="jlist-panel">
+            <div class="jlist-hdr"><span class="jcount" id="jcount">0 vagas</span><span style="font-size:11px;color:var(--t3)" id="jlist-feed">—</span></div>
+            <div id="jlist"></div>
+            <div id="jlist-more" style="padding:12px;text-align:center" class="gone"><button class="btn btn-secondary btn-sm" id="btn-more">Carregar mais</button></div>
+          </div>
+          <div class="jdetail" id="jdetail">
+            <div class="jd-empty" id="jd-empty"><i class="ti ti-briefcase"></i><div style="font-weight:700;color:var(--t2)">Selecione uma vaga</div><div style="font-size:12px">Os detalhes e o botão de envio aparecem aqui.</div></div>
+            <div class="jd-content gone" id="jd-content"></div>
+          </div>
+        </div>
+        <div class="mob-detail" id="mob-detail">
+          <div class="mob-back" id="mob-back"><div class="mob-back-circle"><i class="ti ti-arrow-left"></i></div><span>Voltar às vagas</span></div>
+          <div class="jd-content" id="mob-jd-content" style="overflow-y:auto"></div>
+        </div>
+      </section>
+
+      <!-- ══ HISTÓRICO ══ -->
+      <section class="view gone" id="v-hist">
+        <div class="view-scroll">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <div>
+              <div style="font-family:'Sora',sans-serif;font-size:19px;font-weight:800">Histórico de envios</div>
+              <div style="font-size:12px;color:var(--t2)" id="hist-sub">Tudo o que saiu da sua conta.</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" id="hist-export"><i class="ti ti-download"></i> CSV</button>
+              <button class="btn btn-secondary btn-sm" id="hist-refresh"><i class="ti ti-refresh"></i></button>
+            </div>
+          </div>
+          <div class="stats-row" style="grid-template-columns:repeat(4,1fr)">
+            <div class="stat-box"><div class="stat-val" id="hst-total">0</div><div class="stat-lbl">Total</div></div>
+            <div class="stat-box"><div class="stat-val" style="color:var(--green)" id="hst-today">0</div><div class="stat-lbl">Hoje</div></div>
+            <div class="stat-box"><div class="stat-val" style="color:var(--purple)" id="hst-7">0</div><div class="stat-lbl">7 dias</div></div>
+            <div class="stat-box"><div class="stat-val" style="color:var(--amber)" id="hst-emp">0</div><div class="stat-lbl">Empresas</div></div>
+          </div>
+          <div class="search-wrap" style="margin-bottom:10px"><i class="ti ti-search"></i><input class="search-inp" id="hist-q" placeholder="Filtrar por empresa, vaga ou e-mail…"></div>
+          <div id="hist-list"></div>
+        </div>
+      </section>
+
+      <!-- ══ PESQUISA ══ -->
+      <section class="view gone" id="v-pesquisa">
+        <div class="search-bar" style="padding:12px">
+          <div class="search-wrap"><i class="ti ti-search"></i><input class="search-inp" id="pesq-q" placeholder="Pesquisar em vagas e histórico…" autocomplete="off"></div>
+          <div class="filters-row">
+            <button class="pesq-src-chip active" data-src="all">Tudo</button>
+            <button class="pesq-src-chip" data-src="seasonal">Vagas</button>
+            <button class="pesq-src-chip" data-src="hist">Histórico</button>
+            <button class="pesq-src-chip" data-src="H-2A">🌾 H-2A</button>
+            <button class="pesq-src-chip" data-src="H-2B">🏨 H-2B</button>
+          </div>
+        </div>
+        <div class="view-scroll" style="padding:12px 0">
+          <div id="pesq-hint" class="empty-state"><i class="ti ti-search"></i><p>Digite para pesquisar</p><small>Empresa, título, cidade, estado ou número da ordem (ex.: H-300-24123-456789).</small></div>
+          <div id="pesq-results"></div>
+        </div>
+      </section>
+
+      <!-- ══ LOGS ══ -->
+      <section class="view gone" id="v-logs">
+        <div class="view-scroll">
+          <div style="font-family:'Sora',sans-serif;font-size:19px;font-weight:800;margin-bottom:2px">Logs de envio</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:12px">Fila, cota do dia e cada tentativa — com o motivo quando falhou.</div>
+          <div class="auto-dashboard">
+            <div class="auto-dash-box"><div class="auto-dash-val" id="lg-sent">0</div><div class="auto-dash-lbl">Enviados hoje</div></div>
+            <div class="auto-dash-box"><div class="auto-dash-val" style="color:var(--amber)" id="lg-queue">0</div><div class="auto-dash-lbl">Na fila</div></div>
+            <div class="auto-dash-box"><div class="auto-dash-val" style="color:var(--purple)" id="lg-review">0</div><div class="auto-dash-lbl">Em revisão</div></div>
+            <div class="auto-dash-box"><div class="auto-dash-val" style="color:var(--red)" id="lg-failed">0</div><div class="auto-dash-lbl">Falhas</div></div>
+          </div>
+          <div class="logs-toolbar">
+            <input class="logs-search" id="logs-q" placeholder="Filtrar…">
+            <select class="fsel" id="logs-status"><option value="all">Todos</option><option value="SENT">Enviados</option><option value="FAILED">Falhas</option><option value="AWAITING_REVIEW">Revisão</option><option value="QUEUED">Na fila</option><option value="SKIPPED">Pulados</option></select>
+            <button class="btn btn-secondary btn-sm" id="logs-refresh"><i class="ti ti-refresh"></i></button>
+          </div>
+          <div class="home-card" style="margin-bottom:12px">
+            <div class="home-section-title">Últimos 14 dias</div>
+            <div class="chart-bars" id="logs-chart"></div>
+            <div style="display:flex" id="logs-chart-lbl"></div>
+          </div>
+          <div id="logs-list" style="border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--surface)"></div>
+          <div class="home-section-title" style="margin-top:18px">Eventos do sistema</div>
+          <div id="syslogs-list" style="border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--surface)"></div>
+        </div>
+      </section>
+
+      <!-- ══ PERFIL ══ -->
+      <section class="view gone" id="v-profile">
+        <div class="prof-hdr">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="sb-av" id="prof-av" style="width:52px;height:52px;font-size:22px;border:2px solid rgba(255,255,255,.4)">G</div>
+            <div style="min-width:0;flex:1">
+              <div id="prof-name" style="font-family:'Sora',sans-serif;font-size:18px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Seu nome</div>
+              <div id="prof-email" style="font-size:12px;opacity:.85">—</div>
+            </div>
+            <button class="btn btn-sm" id="prof-edit-btn" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)"><i class="ti ti-pencil"></i> Editar</button>
+          </div>
+        </div>
+        <div id="profile-subtabs">
+          <button class="stab active" data-ptab="me"><i class="ti ti-user"></i><span>Eu</span></button>
+          <button class="stab" data-ptab="cvs"><i class="ti ti-file-text"></i><span>Currículos</span></button>
+          <button class="stab" data-ptab="num"><i class="ti ti-chart-bar"></i><span>Números</span></button>
+        </div>
+        <div class="view-scroll" id="ptab-me"></div>
+        <div class="view-scroll gone" id="ptab-cvs"></div>
+        <div class="view-scroll gone" id="ptab-num"></div>
+      </section>
+
+      <!-- ══ NOTIFICAÇÕES ══ -->
+      <section class="view gone" id="v-notif">
+        <div class="view-scroll">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-family:'Sora',sans-serif;font-size:19px;font-weight:800">Notificações</div>
+            <div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" id="notif-readall">Marcar lidas</button><button class="btn btn-secondary btn-sm" id="notif-clear"><i class="ti ti-trash"></i></button></div>
+          </div>
+          <div id="notif-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </section>
+
+      <!-- ══ NOTÍCIAS ══ -->
+      <section class="view gone" id="v-news">
+        <div class="view-scroll">
+          <div style="font-family:'Sora',sans-serif;font-size:19px;font-weight:800;margin-bottom:2px">Notícias DOL</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:12px">Publicações do feed, safra e o que mudou entre uma importação e outra.</div>
+          <div id="news-list"></div>
+        </div>
+      </section>
+
+      <!-- ══ CONFIGURAÇÕES ══ -->
+      <section class="view gone" id="v-settings">
+        <div class="view-scroll" id="settings-body"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ── BOTTOM NAV (mobile) ── -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="bn" data-sv="home"><i class="ti ti-home"></i><span>Início</span></button>
+    <button class="bn" data-sv="jobs"><i class="ti ti-briefcase"></i><span>Vagas</span><span class="bn-badge gone" id="bn-jobs-badge"></span></button>
+    <button class="bn bn-auto" id="bn-auto"><div class="bn-auto-ring"><i class="ti ti-rocket"></i></div><span>Auto</span><span class="bn-dot gone" id="bn-auto-dot"></span></button>
+    <button class="bn" data-sv="hist"><i class="ti ti-history"></i><span>Histórico</span></button>
+    <button class="bn bn-profile" data-sv="profile"><div class="bn-av-wrap"><i class="ti ti-user"></i></div><span>Perfil</span></button>
+  </nav>
+</div>
+
+<!-- ═══════════ DRAWER ═══════════ -->
+<div class="drawer-ov" id="drawer-ov"></div>
+<aside class="drawer" id="drawer">
+  <div style="display:flex;align-items:center;gap:10px;padding:4px 6px 12px">
+    <div class="sb-av" id="dr-av">G</div>
+    <div style="min-width:0;flex:1"><div id="dr-name" style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Seu nome</div><div id="dr-email" style="font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div></div>
+    <button class="mx" id="drawer-close" aria-label="Fechar"><i class="ti ti-x"></i></button>
+  </div>
+  <div style="display:flex;gap:6px;padding:0 4px 10px">
+    <button class="d-quick-btn" id="dr-theme"><i class="ti ti-moon"></i> Tema</button>
+    <button class="d-quick-btn" id="dr-mode"><i class="ti ti-device-mobile"></i> <span id="dr-mode-lbl">Auto</span></button>
+  </div>
+  <button class="d-item" id="dr-auto"><i class="ti ti-rocket" style="color:var(--purple)"></i> Envio automático</button>
+  <button class="d-item" data-sv="home"><i class="ti ti-home"></i> Início</button>
+  <button class="d-item" data-sv="jobs"><i class="ti ti-briefcase"></i> Vagas</button>
+  <button class="d-item" data-sv="hist"><i class="ti ti-history"></i> Histórico</button>
+  <button class="d-item" data-sv="pesquisa"><i class="ti ti-search"></i> Pesquisa</button>
+  <button class="d-item" data-sv="logs"><i class="ti ti-list-details"></i> Logs de envio</button>
+  <button class="d-item" data-sv="news"><i class="ti ti-news"></i> Notícias DOL</button>
+  <button class="d-item" data-sv="notif"><i class="ti ti-bell"></i> Notificações</button>
+  <button class="d-item" data-sv="profile"><i class="ti ti-user"></i> Meu perfil</button>
+  <button class="d-item" data-sv="settings"><i class="ti ti-settings"></i> Configurações</button>
+  <button class="d-item" id="dr-tour"><i class="ti ti-compass"></i> Tour do app</button>
+</aside>
+
+<!-- ═══════════ ENVIO MANUAL ═══════════ -->
+<div class="overlay" id="send-modal">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl">Enviar candidatura</div><div class="msub" id="sm-sub">Revise antes de enviar.</div></div><button class="mx" data-close="send-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="sm-body"></div>
+    <div class="mfoot" id="sm-foot"></div>
+  </div>
+</div>
+
+<!-- ═══════════ ENVIO AUTOMÁTICO ═══════════ -->
+<div id="auto-modal-overlay">
+  <div id="auto-modal-inner">
+    <div class="auto-hero">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="mx" id="auto-close" style="background:rgba(255,255,255,.15);color:#fff"><i class="ti ti-arrow-left"></i></button>
+        <div style="flex:1;min-width:0"><div class="auto-hero-title">🚀 Envio automático</div><div class="auto-hero-sub" id="auto-hero-sub">Configure uma vez. O robô envia por você todo dia, dentro da cota.</div></div>
+      </div>
+      <div class="auto-free-note" id="auto-free-note"><i class="ti ti-shield-check"></i> Só envia o que passar na validação e no Truth Guard</div>
+    </div>
+    <div class="view-scroll" id="auto-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════ PRÉ-VOO ═══════════ -->
+<div class="overlay" id="preflight-modal">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl">Checklist antes de ligar</div><div class="msub">O robô só liga com tudo verde.</div></div><button class="mx" data-close="preflight-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="pf-body"></div>
+    <div class="mfoot" id="pf-foot"></div>
+  </div>
+</div>
+
+<!-- ═══════════ FILTROS ═══════════ -->
+<div class="overlay" id="filters-modal">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl">Filtros</div><div class="msub" id="mf-sub">Refine as vagas que aparecem na lista.</div></div><button class="mx" data-close="filters-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="mf-body"></div>
+    <div class="mfoot"><button class="btn btn-secondary" id="mf-clear">Limpar</button><button class="btn btn-primary" id="mf-apply" style="flex:1">Aplicar filtros</button></div>
+  </div>
+</div>
+
+<!-- ═══════════ EDITOR DE PERFIL / MODELOS ═══════════ -->
+<div class="overlay" id="editor-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl">Documentos e modelos de e-mail</div><div class="msub">Currículo, carta e os textos que o robô rotaciona.</div></div><button class="mx" data-close="editor-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="ed-body"></div>
+    <div class="mfoot"><button class="btn btn-secondary" data-close="editor-modal">Fechar</button><button class="btn btn-primary" id="ed-save" style="flex:1"><i class="ti ti-device-floppy"></i> Salvar modelos</button></div>
+  </div>
+</div>
+
+<!-- ═══════════ DETALHE DO HISTÓRICO ═══════════ -->
+<div class="overlay" id="hist-modal">
+  <div class="modal hist-detail-modal">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl" id="hm-title">Candidatura</div><div class="msub" id="hm-sub"></div></div><button class="mx" data-close="hist-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="hm-body"></div>
+    <div class="mfoot" id="hm-foot"></div>
+  </div>
+</div>
+
+<!-- ═══════════ SUCESSO ═══════════ -->
+<div id="success-overlay">
+  <div class="suc-box">
+    <div class="suc-icon">🎉</div>
+    <div style="font-family:'Sora',sans-serif;font-size:19px;font-weight:900;margin-bottom:6px" id="suc-title">Enviado!</div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:16px" id="suc-text"></div>
+    <button class="btn btn-primary w100" id="suc-ok">Continuar</button>
+  </div>
+</div>
+
+<!-- ═══════════ AVISO (cota / velocidade) ═══════════ -->
+<div class="h2b-ov" id="warn-ov">
+  <div class="h2b-ov-box">
+    <div class="h2b-ov-icon" id="warn-icon">⚠️</div>
+    <div class="h2b-ov-title" id="warn-title"></div>
+    <div class="h2b-ov-txt" id="warn-text"></div>
+    <button class="h2b-btn-red gone" id="warn-danger"></button>
+    <button class="h2b-btn-green" id="warn-ok">Entendi</button>
+  </div>
+</div>
+
+<!-- ═══════════ ONBOARDING ═══════════ -->
+<div id="onboarding-overlay">
+  <div>
+    <div style="height:4px;background:var(--sf3);border-radius:2px;margin:14px 20px 0;overflow:hidden"><div id="ob-progress" style="width:0"></div></div>
+    <div id="ob-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════ TOUR ═══════════ -->
+<div class="overlay" id="tour-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="mhandle"></div>
+    <div id="tour-track"></div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 0 4px" id="tour-dots"></div>
+    <div class="mfoot"><button class="btn btn-secondary" id="tour-skip">Pular</button><button class="btn btn-primary" id="tour-next" style="flex:1">Próximo</button></div>
+  </div>
+</div>
+
+<div id="offline-banner"><i class="ti ti-wifi-off"></i> Sem conexão — mostrando o que já estava carregado</div>
+<div id="tw"></div>
+
+<script src="/js/api.js"></script>
+<script src="/h2b/js/app.js"></script>
+<script src="/h2b/js/jobs.js"></script>
+<script src="/h2b/js/send.js"></script>
+<script src="/h2b/js/profile.js"></script>
+<script src="/h2b/js/views.js"></script>
+<script>H2B.boot();</script>
+</body>
+</html>

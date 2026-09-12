@@ -1,0 +1,47 @@
+# Proxy reverso com HTTPS automático (spec §58).
+#
+# Substitua os domínios pelos seus antes de subir em produção. O Caddy emite e
+# renova os certificados sozinho, desde que o DNS já aponte para o VPS (§57).
+#
+# Os três produtos compartilham a mesma aplicação: a separação acontece nas
+# rotas e no banco, não em processos distintos. Subdomínios existem para dar a
+# cada produto um endereço próprio, como o spec §56 recomenda.
+
+{
+	# email seu-email@exemplo.com   # descomente para receber avisos do Let's Encrypt
+	admin off
+}
+
+(comum) {
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# `api` é o nome do serviço na rede interna do Compose. A porta 3000 nunca
+	# é publicada no host — só o proxy a alcança.
+	reverse_proxy api:3000
+}
+
+# ---------------------------------------------------------------------------
+# Endereço do site
+# ---------------------------------------------------------------------------
+#
+# O endereço vem da variável DOMAIN, definida no .env do servidor. Com um
+# domínio real o Caddy emite e renova o certificado sozinho — desde que o DNS
+# já aponte para o VPS ANTES de subir.
+#
+# Sem DOMAIN definida, cai em :80 e serve por HTTP simples, que é o certo para
+# desenvolvimento local e para um primeiro teste direto pelo IP do servidor.
+#
+# Nada aqui precisa ser editado: mude DOMAIN no .env e reinicie o proxy com
+# "docker compose up -d proxy".
+
+{$DOMAIN::80} {
+	import comum
+}

@@ -1,0 +1,104 @@
+# CI/CD — testes em toda mudança, deploy só a partir de `main` (spec §66, §67, §81).
+#
+# ATENÇÃO antes do primeiro uso em produção:
+#   1. confirme os parâmetros da action `hostinger/deploy-action` na versão
+#      instalada — eles podem ter mudado desde a verificação do spec;
+#   2. cadastre os secrets HOSTINGER_API_KEY e PERSONAL_ACCESS_TOKEN e a
+#      variável HOSTINGER_VM_ID no ambiente `production` do repositório;
+#   3. proteja o ambiente `production` exigindo aprovação manual.
+#
+# Este workflow nunca foi executado neste repositório — ele é o ponto de
+# partida documentado, não uma pipeline validada em produção.
+
+name: CI e Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Só um deploy de produção por vez (spec §66, §81).
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22+ é obrigatório: a aplicação usa `node:sqlite`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificação de sintaxe
+        run: npm run lint
+
+      - name: Suíte de testes
+        run: npm test
+
+      # Falha o build se algum segredo tiver sido commitado por engano.
+      - name: Conferir que não há segredos versionados
+        run: |
+          set -e
+          if git ls-files | grep -E '(^|/)\.env$|client_secret.*\.json$|\.pem$|\.key$'; then
+            echo "::error::Arquivo de segredo encontrado no repositório."
+            exit 1
+          fi
+          echo "Nenhum arquivo de segredo versionado."
+
+      # A imagem precisa construir antes de qualquer tentativa de deploy.
+      - name: Construir imagem Docker
+        run: docker build -t job-intelligence:ci .
+
+  deploy:
+    name: Deploy para Hostinger
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # As migrações rodam no boot da aplicação e são idempotentes. Se falharem,
+      # o /health/ready responde 503 e o health check do container reprova —
+      # é assim que uma migração quebrada impede o deploy de virar saudável.
+      - name: Deploy
+        uses: hostinger/deploy-action@v1
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          project-name: job-intelligence
+          personal-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          docker-compose-path: docker-compose.yml
+
+      - name: Verificar saúde após o deploy
+        env:
+          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "::warning::PRODUCTION_HEALTH_URL não configurada — verificação pulada."
+            exit 0
+          fi
+          for i in $(seq 1 12); do
+            if curl -fsS "$HEALTH_URL" > /tmp/health.json; then
+              echo "Aplicação saudável:"; cat /tmp/health.json
+              exit 0
+            fi
+            echo "Tentativa $i: ainda não respondeu. Aguardando…"
+            sleep 10
+          done
+          echo "::error::A aplicação não ficou saudável após o deploy."
+          exit 1
