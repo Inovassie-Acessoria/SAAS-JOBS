@@ -12,7 +12,13 @@
 
 // Precisa vir ANTES de qualquer require que leia process.env — o banco lê
 // DB_PATH e o secretBox lê APP_ENCRYPTION_KEY já no carregamento do módulo.
-require('dotenv').config();
+//
+// O caminho é explícito, ao lado deste arquivo. O padrão do dotenv é o
+// diretório de trabalho do processo — e uma hospedagem gerenciada pode iniciar
+// o app de outro lugar, caso em que o `.env` da pasta do projeto era ignorado
+// em silêncio. Variáveis já presentes no ambiente (painel da hospedagem,
+// Docker) continuam mandando: o dotenv nunca sobrescreve o que já existe.
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -729,12 +735,63 @@ app.get('/api/seasonal/gmail/status', wrap((req, res) => res.json(gmail.status()
 
 app.get('/api/seasonal/gmail/auth-url', wrap((req, res) => res.json({ url: gmail.getAuthUrl() })));
 
+/**
+ * O Google volta para cá com `error=` quando NÃO concede a permissão. O caso
+ * mais comum não é o usuário cancelar: é a conta não estar na lista de
+ * usuários de teste do app (tela de permissão OAuth em modo "Teste"), ou um
+ * administrador do Workspace bloquear o escopo. Dizer "você cancelou" nesses
+ * casos manda o usuário procurar o problema no lugar errado.
+ */
+function describeConsentError(code) {
+  const c = String(code || '').trim();
+  const known = {
+    access_denied:
+      'O Google não concedeu a permissão de envio. Isso acontece quando você cancela, ou — mais comum — quando a ' +
+      'conta escolhida não está na lista de "usuários de teste" da tela de permissão OAuth no Google Cloud ' +
+      '(app em modo Teste), ou quando o administrador do Google Workspace bloqueia o escopo gmail.send. ' +
+      'Adicione a conta como usuário de teste e tente de novo.',
+    admin_policy_enforced:
+      'O administrador do Google Workspace desta conta bloqueou o acesso de apps externos ao Gmail. ' +
+      'Use uma conta pessoal (@gmail.com) ou peça liberação ao administrador.',
+    org_internal:
+      'Este app está restrito a contas da organização no Google Cloud (tipo de usuário "Interno"). ' +
+      'Mude para "Externo" na tela de permissão OAuth para aceitar contas @gmail.com.',
+    interaction_required:
+      'O Google precisava de uma confirmação sua e não conseguiu mostrá-la. Tente de novo.'
+  };
+  return known[c] || `O Google recusou a autorização (${c || 'motivo não informado'}). Nenhuma conta foi conectada.`;
+}
+
 app.get('/api/seasonal/gmail/callback', wrap(async (req, res) => {
   if (req.query.error) {
-    return res.status(400).send(htmlMessage('Autorização cancelada', 'Você cancelou a autorização do Gmail. Nenhuma conta foi conectada.'));
+    const code = String(req.query.error);
+    logCore('gmail', 'oauth_consent_denied',
+      `O Google voltou com erro na tela de permissão: ${code}.`, { googleError: code }, null, 'warn');
+    return res.status(400).send(htmlMessage('Gmail não conectado', describeConsentError(code), { ok: false }));
   }
-  if (!req.query.code) throw new UserError('Código de autorização ausente.');
-  const out = await gmail.handleCallback(String(req.query.code));
+  if (!req.query.code) {
+    return res.status(400).send(htmlMessage('Gmail não conectado',
+      'O Google voltou sem o código de autorização. Feche esta janela e clique em Conectar de novo.', { ok: false }));
+  }
+
+  // Falhar aqui virava um JSON genérico dentro da janela do Google, sem o
+  // motivo. A página de erro precisa dizer o que aconteceu E avisar a janela
+  // mãe de que NÃO deu certo — senão a tela principal comemora uma conexão
+  // que não existe.
+  let out;
+  try {
+    out = await gmail.handleCallback(String(req.query.code), { userId: req.user ? req.user.id : 1 });
+  } catch (err) {
+    const status = err.status || (err.userFacing ? 400 : 500);
+    const message = err.userFacing
+      ? err.message
+      : 'Algo deu errado ao concluir a autorização. Veja os Logs para o detalhe técnico.';
+    if (!err.userFacing) {
+      logCore('gmail', 'oauth_callback_failed', err.message, { path: req.path }, null, 'error');
+      console.error('[gmail callback]', err);
+    }
+    return res.status(status).send(htmlMessage('Gmail não conectado', message, { ok: false }));
+  }
 
   // Registra a conexão de PROVEDOR — separada do login da aplicação (§21).
   if (req.user) {
@@ -840,13 +897,23 @@ app.get('/api/core/readiness', wrap((req, res) => {
   res.status(r.ready ? 200 : 200).json(r);
 }));
 
-function htmlMessage(title, body) {
-  // Se a página foi aberta pelo front (janela filha), avisa a janela mãe para
-  // recarregar o estado do Gmail e fecha sozinha após alguns segundos.
-  return `<!doctype html><meta charset="utf-8"><title>${title}</title>
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function htmlMessage(title, body, { ok = true } = {}) {
+  // Se a página foi aberta pelo front (janela filha), avisa a janela mãe do
+  // resultado. Sucesso fecha sozinho; falha fica aberta, porque o texto é a
+  // única pista do que corrigir — e a janela mãe recebe a mesma mensagem.
+  const payload = JSON.stringify({ type: ok ? 'gmail-oauth-done' : 'gmail-oauth-failed', message: String(body) })
+    .replace(/</g, '\\u003c');
+  return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(title)}</title>
     <div style="font:16px system-ui;padding:48px;max-width:520px;margin:0 auto">
-      <h1 style="font-size:20px">${title}</h1><p style="color:#444">${body}</p></div>
-    <script>try{if(window.opener){window.opener.postMessage({type:'gmail-oauth-done'},'*');setTimeout(function(){window.close()},2500)}}catch(e){}</script>`;
+      <h1 style="font-size:20px;color:${ok ? '#166534' : '#991b1b'}">${escapeHtml(title)}</h1>
+      <p style="color:#444;line-height:1.5">${escapeHtml(body)}</p>
+      ${ok ? '' : '<p style="color:#666;font-size:14px">Você pode fechar esta janela.</p>'}</div>
+    <script>try{if(window.opener){window.opener.postMessage(${payload},'*');${ok ? 'setTimeout(function(){window.close()},2500)' : ''}}}catch(e){}</script>`;
 }
 
 // ---------------------------------------------------------------------------

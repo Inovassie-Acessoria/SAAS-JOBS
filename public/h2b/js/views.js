@@ -280,7 +280,16 @@ H2B.views = (function () {
     `;
 
     // --- wiring ---
-    const addBtn = $('#st-add-sender'); if (addBtn) addBtn.onclick = async () => { try { const r = await API.gmailSenders.addUrl(); window.open(r.url, 'gmail-oauth', 'width=520,height=680'); toast('Autorize a conta na janela do Google'); } catch (e) { err(e); } };
+    const addBtn = $('#st-add-sender'); if (addBtn) addBtn.onclick = async () => {
+      // A janela abre ANTES do await: depois de uma resposta de rede o clique já
+      // não conta como gesto do usuário e o bloqueador de popup engole o open.
+      const popup = window.open('about:blank', 'gmail-oauth', 'width=520,height=680');
+      try {
+        const r = await API.gmailSenders.addUrl();
+        if (popup) { popup.location.href = r.url; toast('Autorize a conta na janela do Google'); }
+        else { window.location.href = r.url; }
+      } catch (e) { if (popup) popup.close(); err(e); }
+    };
     el.onclick = async (ev) => {
       const t = ev.target.closest('[data-toggle]'); if (t) { try { await API.gmailSenders.setActive(t.dataset.toggle, t.dataset.active !== '1'); toast('Conta atualizada', 'ok'); renderSettings(); } catch (e) { err(e); } return; }
       const rm = ev.target.closest('[data-remove]'); if (rm) { H2B.warn({ icon: '📮', title: 'Remover esta conta?', text: 'Ela deixa de enviar. Você pode conectar de novo depois.', danger: 'Remover', okLabel: 'Cancelar', onDanger: async () => { try { await API.gmailSenders.remove(rm.dataset.remove); toast('Conta removida'); renderSettings(); } catch (e) { err(e); } } }); return; }
@@ -318,7 +327,11 @@ H2B.views = (function () {
   }
 
   // OAuth em janela filha avisa quando termina.
-  window.addEventListener('message', (ev) => { if (ev.data && ev.data.type === 'gmail-oauth-done') { toast('Conta Gmail conectada', 'ok'); H2B.refreshCore(); if (state.view === 'settings') renderSettings(); } });
+  window.addEventListener('message', (ev) => {
+    if (ev.origin !== window.location.origin || !ev.data) return;
+    if (ev.data.type === 'gmail-oauth-done') { toast('Conta Gmail conectada', 'ok'); H2B.refreshCore(); if (state.view === 'settings') renderSettings(); }
+    else if (ev.data.type === 'gmail-oauth-failed') { toast(ev.data.message || 'O Google não concluiu a autorização.', 'err', 12000); }
+  });
 
   // ═══════════════════════════════════════════════════════════ wiring
 

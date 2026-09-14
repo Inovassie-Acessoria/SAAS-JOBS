@@ -390,6 +390,37 @@ function checkIntelligence() {
  * @param {object} [options]
  * @param {number} [options.userId]
  */
+/**
+ * De onde o processo está lendo a configuração — para resolver, de uma vez,
+ * a dúvida "o servidor está vendo o meu .env?".
+ *
+ * Só diz SE cada variável existe, nunca o valor. É o suficiente para separar
+ * "arquivo não foi lido" de "arquivo lido, mas a variável está em branco".
+ */
+function describeEnvironment() {
+  const fs = require('fs');
+  const path = require('path');
+  const envFile = path.join(__dirname, '..', '.env');
+  const present = (k) => Boolean(process.env[k] && String(process.env[k]).trim());
+
+  return {
+    nodeVersion: process.version,
+    appDir: path.join(__dirname, '..'),
+    workingDir: process.cwd(),
+    envFile,
+    envFileFound: fs.existsSync(envFile),
+    variables: {
+      APP_ENV: process.env.APP_ENV || '(vazio)',
+      APP_BASE_URL: present('APP_BASE_URL'),
+      APP_ENCRYPTION_KEY: present('APP_ENCRYPTION_KEY'),
+      GOOGLE_CLIENT_ID: present('GOOGLE_CLIENT_ID'),
+      GOOGLE_CLIENT_SECRET: present('GOOGLE_CLIENT_SECRET'),
+      GOOGLE_REDIRECT_URI: present('GOOGLE_REDIRECT_URI'),
+      DB_PATH: present('DB_PATH')
+    }
+  };
+}
+
 function check({ userId = 1 } = {}) {
   const items = [
     ...checkRuntime(),
@@ -419,6 +450,7 @@ function check({ userId = 1 } = {}) {
 
   return {
     ready,
+    environment: describeEnvironment(),
     summary: ready
       ? 'O sistema tem tudo o que precisa para operar sozinho.'
       : `Faltam ${blockers.length} item(ns) obrigatório(s) para a operação autônoma` +

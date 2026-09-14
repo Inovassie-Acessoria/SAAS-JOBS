@@ -128,9 +128,58 @@ function getAuthUrl({ addSender = false } = {}) {
   });
 }
 
-async function handleCallback(code) {
+/**
+ * Traduz a resposta de erro do Google para uma frase que diz o que fazer.
+ *
+ * Sem isto, qualquer recusa na troca do código virava "Algo deu errado" na
+ * janela de autorização — e o motivo real (URI de retorno não cadastrada,
+ * segredo trocado, código reutilizado) ficava só no log, onde ninguém olha na
+ * hora. O código do Google segue junto para que o log e a tela concordem.
+ */
+function describeGoogleError(err) {
+  const data = (err && err.response && err.response.data) || {};
+  const code = String(data.error || (err && err.code) || '').trim();
+  const detail = String(data.error_description || (err && err.message) || '').trim();
+  const redirectUri = credentials().redirectUri;
+
+  const known = {
+    redirect_uri_mismatch:
+      'O Google recusou o endereço de retorno. No Google Cloud Console, abra o OAuth Client e cadastre ' +
+      `exatamente esta URI em "URIs de redirecionamento autorizados": ${redirectUri}`,
+    invalid_client:
+      'O Google não reconheceu o Client ID ou o Client Secret. Confira se os dois vêm do MESMO OAuth Client ' +
+      'e se o Client Secret não foi redefinido no console depois de configurado aqui.',
+    unauthorized_client:
+      'Este OAuth Client não está autorizado para esse tipo de fluxo. Ele precisa ser do tipo "Aplicativo da Web".',
+    invalid_grant:
+      'O código de autorização expirou ou já foi usado. Feche esta janela e clique em Conectar de novo.',
+    invalid_request:
+      'O Google considerou o pedido malformado. Confira o Client ID e a URI de retorno cadastrada.'
+  };
+
+  const e = new Error(known[code] ||
+    `O Google recusou a autorização (${code || 'erro desconhecido'}${detail ? `: ${detail}` : ''}).`);
+  e.userFacing = true;
+  e.status = 400;
+  e.googleError = code || null;
+  e.googleDetail = detail || null;
+  return e;
+}
+
+async function handleCallback(code, { userId = 1 } = {}) {
   const client = oauthClient();
-  const { tokens } = await client.getToken(code);
+
+  let tokens;
+  try {
+    ({ tokens } = await client.getToken(code));
+  } catch (err) {
+    const e = describeGoogleError(err);
+    logCore('gmail', 'oauth_exchange_failed',
+      `A troca do código de autorização falhou: ${e.googleError || 'erro'}${e.googleDetail ? ` — ${e.googleDetail}` : ''}.`,
+      { googleError: e.googleError, redirectUri: credentials().redirectUri }, null, 'error');
+    throw e;
+  }
+
   if (!tokens.refresh_token) {
     const existing = loadTokens();
     if (existing && existing.refresh_token) tokens.refresh_token = existing.refresh_token;
@@ -152,7 +201,7 @@ async function handleCallback(code) {
   let sender = null;
   try {
     const senders = require('./gmailSenderService');
-    sender = senders.upsertFromOAuth({ email, tokens, displayName: email });
+    sender = senders.upsertFromOAuth({ email, tokens, displayName: email, userId });
   } catch (e) {
     // Sem registro de contas o envio único ainda funciona pelo token em arquivo.
     logCore('gmail', 'sender_register_failed',
@@ -374,6 +423,6 @@ function status() {
 }
 
 module.exports = {
-  SCOPES, isConfigured, getAuthUrl, handleCallback,
+  SCOPES, isConfigured, getAuthUrl, handleCallback, describeGoogleError,
   testConnection, disconnect, sendMail, status, buildMime
 };
