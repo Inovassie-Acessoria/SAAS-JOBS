@@ -267,6 +267,15 @@ function normalizeDolRecord(r, feedKey = 'jo') {
   const attyName = [pick('attyFirstname'), pick('attyLastname')].filter(Boolean).join(' ')
     || pick('attyBizname', 'attorney_name', 'agent_name', 'ATTORNEY_NAME');
 
+  // Página pública da vaga no site do DOL (verificado em 2026-09-14):
+  //   https://seasonaljobs.dol.gov/jobs/<número do PEDIDO>
+  // O pedido H-2B (9142B) já vem com esse número (H-400-…). A ordem H-2A
+  // (790) vem como JO-A-300-N, e o site indexa pelo pedido H-300-N — mesmo
+  // sufixo, conversão determinística. A página só existe depois que o DOL
+  // aceita o pedido; o feed diz isso em dateAcceptanceLtrIssued. Sem aceite,
+  // o link fica marcado como "publicação pendente" e o reimport diário corrige.
+  const dol = dolPublicLink(caseNumber, feedKey, Boolean(pick('dateAcceptanceLtrIssued')));
+
   return {
     job_order_id: caseNumber,
     visa_type: visa,
@@ -294,8 +303,30 @@ function normalizeDolRecord(r, feedKey = 'jo') {
     application_email: applyEmail || employerEmail || attorneyEmail || null,
     application_url: applyUrl,
     provider_feed: feedKey,
+    dol_url: dol.url,
+    dol_published: dol.published ? 1 : 0,
     raw_json: JSON.stringify(r).slice(0, 20000)
   };
+}
+
+const DOL_JOB_PAGE = 'https://seasonaljobs.dol.gov/jobs/';
+
+/**
+ * Link público da vaga no seasonaljobs.dol.gov e se a página já existe.
+ * Números fora do padrão (fixtures, CSV manual) não ganham link.
+ */
+function dolPublicLink(caseNumber, feedKey = 'jo', accepted = false) {
+  const c = String(caseNumber || '').trim().toUpperCase();
+  let m;
+  if ((m = c.match(/^H-(300|400)-\d{5}-\d{6}$/))) {
+    // 9142A / 9142B: o feed só publica pedidos já aceitos.
+    return { url: DOL_JOB_PAGE + c, published: true, publicCase: c };
+  }
+  if ((m = c.match(/^JO-A-300-(\d{5}-\d{6})$/))) {
+    const publicCase = `H-300-${m[1]}`;
+    return { url: DOL_JOB_PAGE + publicCase, published: accepted, publicCase };
+  }
+  return { url: null, published: false, publicCase: null };
 }
 
 /**
@@ -589,6 +620,6 @@ class DolAdapter {
 
 module.exports = {
   DolAdapter, FEEDS, DEFAULT_BASE_URL,
-  normalizeDolRecord, toIsoDate, isSafeEntryName, safeExtract, pickDataEntry, parseDataFile, parseCsv, feedDate,
+  normalizeDolRecord, toIsoDate, dolPublicLink, DOL_JOB_PAGE, isSafeEntryName, safeExtract, pickDataEntry, parseDataFile, parseCsv, feedDate,
   VISA_H2A, VISA_H2B
 };

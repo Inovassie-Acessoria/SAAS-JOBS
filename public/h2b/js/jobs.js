@@ -125,6 +125,7 @@ H2B.jobs = (function () {
         ${j.start_date ? `<span class="tag">📅 ${fmtUSDate(j.start_date)}</span>` : ''}
         ${j.housing_provided ? '<span class="tag tb">🏠 moradia</span>' : ''}
         ${j.isEmailEligible ? '<span class="tag tp">✉️ e-mail</span>' : '<span class="tag ta">📞 manual</span>'}
+        ${j.dol_url && j.dol_published ? `<a class="tag" href="${esc(j.dol_url)}" target="_blank" rel="noopener" data-dol title="Abrir no site do DOL">DOL ↗</a>` : ''}
         ${scoreTag(j)}${timelineTag(j)}
       </div>
     </div>`;
@@ -178,6 +179,7 @@ H2B.jobs = (function () {
     if (j.employer_email && j.employer_email !== j.application_email) contact.push(`<div class="info-box"><div class="info-lbl">E-mail do empregador</div><div class="info-val">${esc(j.employer_email)}</div></div>`);
     if (j.employer_phone) contact.push(`<div class="info-box"><div class="info-lbl">Telefone</div><div class="info-val">${esc(j.employer_phone)}</div></div>`);
     if (j.application_url) contact.push(`<div class="info-box"><div class="info-lbl">Site</div><div class="info-val"><a href="${esc(j.application_url)}" target="_blank" rel="noopener" style="color:var(--blue)">abrir ↗</a></div></div>`);
+    if (j.dol_url) contact.push(`<div class="info-box"><div class="info-lbl">Página oficial no DOL</div><div class="info-val"><a href="${esc(j.dol_url)}" target="_blank" rel="noopener" style="color:var(--blue)">seasonaljobs.dol.gov ↗</a>${j.dol_published ? '' : '<div class="hint" style="margin-top:2px">publicação no site do DOL pendente — o link passa a abrir quando o pedido for aceito</div>'}</div></div>`);
     if (j.attorney_email) contact.push(`<div class="info-box"><div class="info-lbl">Advogado / agente</div><div class="info-val">${esc(j.attorney_name || '')}<br>${esc(j.attorney_email)}</div></div>`);
 
     const txt = (c) => typeof c === 'string' ? c : [c.title || c.label || c.message, c.detail].filter(Boolean).join(' — ') || JSON.stringify(c);
@@ -198,6 +200,7 @@ H2B.jobs = (function () {
       <div class="jd-acts">${sendBtn}
         <button class="btn btn-secondary" data-save2="${j.id}"><i class="ti ${j.is_saved ? 'ti-star-filled' : 'ti-star'}"></i> ${j.is_saved ? 'Salva' : 'Salvar'}</button>
         <button class="btn btn-secondary" data-discard="${j.id}"><i class="ti ti-trash"></i> Descartar</button>
+        ${j.dol_url ? `<a class="btn btn-secondary" href="${esc(j.dol_url)}" target="_blank" rel="noopener" title="${j.dol_published ? 'Abrir a vaga no site do DOL' : 'Ainda não publicada no site do DOL — o link passa a abrir quando o pedido for aceito'}"><i class="ti ti-external-link"></i> Ver no DOL${j.dol_published ? '' : ' <span class="tag ta" style="margin-left:4px">pendente</span>'}</a>` : ''}
       </div>
       <div class="info-grid">
         <div class="info-box"><div class="info-lbl">Salário</div><div class="info-val">${money(j.wage_rate, j.wage_unit)}</div></div>

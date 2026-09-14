@@ -138,3 +138,31 @@ test('por padrão a importação lê ordens H-2A (790) e pedidos H-2B (9142B)', 
   assert.ok(!asked.some(u => u.includes('/zip/h2a/')), 'não lê o 9142A (sem título, funções nem salário)');
   assert.strictEqual(r.jobs.length, 0);
 });
+
+// ── Link público no site do DOL (F4.7) ───────────────────────────────────────
+const { dolPublicLink } = require('../services/adapters/dolAdapter');
+
+test('H-2B e pedidos H-2A já vêm com o número público: link direto e publicado', () => {
+  assert.deepStrictEqual(dolPublicLink('H-400-26245-212581', 'h2b'),
+    { url: 'https://seasonaljobs.dol.gov/jobs/H-400-26245-212581', published: true, publicCase: 'H-400-26245-212581' });
+  assert.deepStrictEqual(dolPublicLink('H-300-26252-223297', 'h2a'),
+    { url: 'https://seasonaljobs.dol.gov/jobs/H-300-26252-223297', published: true, publicCase: 'H-300-26252-223297' });
+});
+
+test('ordem H-2A (JO-A-300-N) vira o pedido H-300-N; publicada só depois do aceite', () => {
+  const pend = dolPublicLink('JO-A-300-26257-231716', 'jo', false);
+  assert.strictEqual(pend.url, 'https://seasonaljobs.dol.gov/jobs/H-300-26257-231716');
+  assert.strictEqual(pend.published, false);
+  const pub = dolPublicLink('JO-A-300-26252-223297', 'jo', true);
+  assert.strictEqual(pub.published, true);
+  // pelo registro real: o aceite vem em dateAcceptanceLtrIssued
+  const n = normalizeDolRecord(Object.assign({}, JO, { dateAcceptanceLtrIssued: '2026-09-11T21:10:42.000Z' }), 'jo');
+  assert.strictEqual(n.dol_url, 'https://seasonaljobs.dol.gov/jobs/H-300-26257-231716');
+  assert.strictEqual(n.dol_published, 1);
+  assert.strictEqual(normalizeDolRecord(JO, 'jo').dol_published, 0);
+});
+
+test('números fora do padrão (fixtures, CSV) não ganham link', () => {
+  assert.strictEqual(dolPublicLink('FX-H300-27001', 'jo').url, null);
+  assert.strictEqual(normalizeDolRecord({ case_number: 'abc', job_title: 'x' }, 'jo').dol_url, null);
+});

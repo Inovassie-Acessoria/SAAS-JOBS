@@ -553,6 +553,24 @@ function migrateJobFocus() {
   } catch (e) { return { migrated: false, error: e.message }; }
 }
 
+/**
+ * Preenche o link público das vagas importadas antes de a coluna existir.
+ * A regra é a mesma do adaptador: H-400/H-300 direto; JO-A-300-N → H-300-N.
+ * A flag de publicação das ordens H-2A fica em 0 até o próximo reimport,
+ * que traz a data de aceite; as H-2B já nascem publicadas.
+ */
+function migrateDolLinks() {
+  try {
+    const a = db.prepare(`UPDATE seasonal_jobs
+      SET dol_url = 'https://seasonaljobs.dol.gov/jobs/' || job_order_id, dol_published = 1
+      WHERE dol_url IS NULL AND job_order_id GLOB 'H-[34]00-[0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]'`).run();
+    const b = db.prepare(`UPDATE seasonal_jobs
+      SET dol_url = 'https://seasonaljobs.dol.gov/jobs/H-300-' || substr(job_order_id, 10)
+      WHERE dol_url IS NULL AND job_order_id GLOB 'JO-A-300-[0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]'`).run();
+    return { h2b: a.changes, h2a: b.changes };
+  } catch (e) { return { error: e.message }; }
+}
+
 function migrateDailyEmailCap() {
   const report = { config: false, setting: false };
 
@@ -1741,6 +1759,10 @@ function initDatabase() {
   addColumnIfMissing('seasonal_jobs', 'last_seen_feed', 'TEXT');
   addColumnIfMissing('seasonal_jobs', 'feed_appearances', 'INTEGER DEFAULT 0');
   addColumnIfMissing('seasonal_jobs', 'feed_key', 'TEXT');
+  // Link público no site do DOL e se a página já existe (F4.7).
+  addColumnIfMissing('seasonal_jobs', 'dol_url', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'dol_published', 'INTEGER DEFAULT 0');
+  result.dolLinks = migrateDolLinks();
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_seasonal_feed_window
              ON seasonal_jobs(last_seen_feed DESC, first_seen_feed);`);

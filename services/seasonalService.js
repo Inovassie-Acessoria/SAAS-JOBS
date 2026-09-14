@@ -301,9 +301,9 @@ function upsertJob(j, hash) {
      wage_unit, start_date, end_date, openings, weekly_hours, housing_provided, transportation_provided,
      duties_description, special_requirements, application_method, application_email, application_url,
      content_hash, raw_json,
-     first_seen_feed, last_seen_feed, feed_appearances, feed_key)
+     first_seen_feed, last_seen_feed, feed_appearances, feed_key, dol_url, dol_published)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,1,?)
+            ?,?,1,?,?,?)
     ON CONFLICT(job_order_id) DO UPDATE SET
       wage_rate = excluded.wage_rate, openings = excluded.openings,
       start_date = excluded.start_date, end_date = excluded.end_date,
@@ -319,14 +319,18 @@ function upsertJob(j, hash) {
       first_seen_feed = COALESCE(seasonal_jobs.first_seen_feed, excluded.first_seen_feed),
       last_seen_feed = MAX(COALESCE(seasonal_jobs.last_seen_feed, ''), COALESCE(excluded.last_seen_feed, '')),
       feed_appearances = COALESCE(seasonal_jobs.feed_appearances, 0) + 1,
-      feed_key = COALESCE(seasonal_jobs.feed_key, excluded.feed_key)`)
+      feed_key = COALESCE(seasonal_jobs.feed_key, excluded.feed_key),
+      -- O link é fixo; a publicação só avança (aceite não volta atrás).
+      dol_url = COALESCE(excluded.dol_url, seasonal_jobs.dol_url),
+      dol_published = MAX(COALESCE(seasonal_jobs.dol_published, 0), COALESCE(excluded.dol_published, 0))`)
     .run(j.job_order_id, j.visa_type, j.job_title, j.normalized_title, j.soc_code, j.employer_name,
          j.employer_city, j.employer_state, j.employer_phone, j.employer_email, j.attorney_name,
          j.attorney_email, j.wage_rate, j.wage_unit, j.start_date, j.end_date, j.openings,
          j.weekly_hours, j.housing_provided, j.transportation_provided, j.duties_description,
          j.special_requirements, j.application_method, j.application_email, j.application_url,
          hash, j.raw_json,
-         j.feed_date || null, j.feed_date || null, j.feed_key || null);
+         j.feed_date || null, j.feed_date || null, j.feed_key || null,
+         j.dol_url || null, j.dol_published ? 1 : 0);
 }
 
 /**
