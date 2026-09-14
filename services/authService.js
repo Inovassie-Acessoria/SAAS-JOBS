@@ -46,9 +46,9 @@ class AuthError extends Error {
  * login sozinho: ligá-lo por acidente trocaria o modo operador local por uma
  * tela de login que o usuário talvez ainda não consiga atravessar.
  */
-function config() {
+function config(req) {
   const shared = require('./googleCredentialsService');
-  const fallback = shared.resolve();
+  const fallback = shared.resolve(req);
   const enabledSetting = (() => {
     try {
       const r = db.prepare("SELECT value FROM core_system_settings WHERE key = 'google_signin_enabled'").get();
@@ -60,7 +60,7 @@ function config() {
     enabled: process.env.GOOGLE_AUTH_ENABLED === 'true' || enabledSetting,
     clientId: process.env.GOOGLE_AUTH_CLIENT_ID || fallback.clientId,
     clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || fallback.clientSecret,
-    redirectUri: process.env.GOOGLE_AUTH_REDIRECT_URI || shared.signinRedirectUri(),
+    redirectUri: shared.signinRedirectUri(req),
     ttlSeconds: parseInt(process.env.SESSION_TTL_SECONDS || String(DEFAULT_TTL_SECONDS), 10),
     cookieSecure: process.env.SESSION_COOKIE_SECURE !== 'false',
     sameSite: process.env.SESSION_COOKIE_SAMESITE || 'Lax'
@@ -83,8 +83,8 @@ function googleConfigured() {
  */
 function localOperatorMode() { return !googleConfigured(); }
 
-function oauthClient() {
-  const c = config();
+function oauthClient(req) {
+  const c = config(req);
   if (!googleConfigured()) {
     throw new AuthError(
       'O login com Google não está configurado neste servidor. Defina GOOGLE_AUTH_CLIENT_ID e GOOGLE_AUTH_CLIENT_SECRET.',
@@ -176,8 +176,10 @@ function resolveGoogleUser(payload) {
 // ---------------------------------------------------------------------------
 
 /** URL de autorização com `state` assinado, para proteção CSRF (spec §3, §35). */
-function beginLogin({ returnTo = '/' } = {}) {
-  const client = oauthClient();
+function beginLogin({ returnTo = '/', req = null } = {}) {
+  // `req` deriva o redirect_uri do endereço real quando o ambiente não fixa
+  // APP_BASE_URL; a checagem de domínio já rodou na rota antes de chegar aqui.
+  const client = oauthClient(req);
   const state = crypto.randomBytes(24).toString('base64url');
   const nonce = crypto.randomBytes(16).toString('base64url');
 
@@ -197,13 +199,13 @@ function beginLogin({ returnTo = '/' } = {}) {
  * Troca o código pela identidade e verifica o ID token.
  * Valida assinatura, emissor, audiência e expiração (spec §3).
  */
-async function completeLogin({ code, state, expectedState, nonce, userAgent, ip }) {
+async function completeLogin({ code, state, expectedState, nonce, userAgent, ip, req = null }) {
   if (!code) throw new AuthError('Código de autorização ausente.', 400);
   if (!expectedState || !state || state !== expectedState) {
     throw new AuthError('A verificação de segurança do login falhou. Tente entrar novamente.', 400);
   }
 
-  const client = oauthClient();
+  const client = oauthClient(req);
   const { tokens } = await client.getToken(code);
   if (!tokens.id_token) throw new AuthError('O Google não devolveu uma identidade verificável.');
 

@@ -25,6 +25,34 @@ JavaScript puro servido estaticamente.
 Sem credenciais configuradas o sistema roda em **modo fixture** — dados de exemplo,
 sempre rotulados como tal na interface. Nada é apresentado como real sem ser real.
 
+## Domínio público e Google OAuth
+
+O domínio do sistema mora em **uma** variável: `APP_BASE_URL`. As URIs de
+retorno do Google são derivadas dela:
+
+    <APP_BASE_URL>/api/seasonal/gmail/callback   (contas de envio Gmail)
+    <APP_BASE_URL>/api/auth/google/callback      (login com Google)
+
+Sem `APP_BASE_URL`, a base é o endereço pelo qual o acesso chegou (respeitando
+`X-Forwarded-Proto`/`X-Forwarded-Host` do proxy). Em produção defina a variável.
+
+**Trocou de domínio?** No servidor:
+
+    npm run domain -- saas.inovassie.com.br
+    # reinicie o app em seguida
+
+O script reescreve todas as variáveis que carregam domínio (`APP_BASE_URL`,
+`DOMAIN`, `CORS_ORIGIN`, `GOOGLE_*_REDIRECT_URI`) sem tocar em segredos. Se as
+variáveis também estiverem no painel da hospedagem, elas mandam sobre o `.env`
+— atualize lá. Depois, no Google Cloud Console → Credenciais → OAuth Client,
+cadastre as duas URIs acima em "URIs de redirecionamento autorizados" e o
+domínio em "Origens JavaScript autorizadas".
+
+Se o servidor estiver configurado para um domínio e for acessado por outro, a
+tela de Configurações mostra o aviso com o que corrigir, e os botões "Conectar"
+recusam antes de mandar o usuário ao Google — em vez do `redirect_uri_mismatch`
+sem explicação.
+
 ## Arquitetura
 
 ```

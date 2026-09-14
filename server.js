@@ -52,6 +52,16 @@ const PORT = process.env.PORT || 3000;
 
 app.disable('x-powered-by');
 
+// Atrás de um proxy reverso (Caddy no VPS, ou a hospedagem gerenciada) o
+// Express só enxerga "http" e o IP do proxy. Com trust proxy ligado, req.protocol
+// e req.ip vêm dos cabeçalhos X-Forwarded-* — é o que faz o redirect_uri do
+// Google sair com https e o limite de requisições contar por visitante real.
+// TRUST_PROXY=false desliga; qualquer outro valor (ou produção) liga.
+const trustProxy = process.env.TRUST_PROXY !== undefined
+  ? (process.env.TRUST_PROXY !== 'false' && process.env.TRUST_PROXY !== '0')
+  : process.env.APP_ENV === 'production';
+if (trustProxy) app.set('trust proxy', 1);
+
 // ---------------------------------------------------------------------------
 // Upload — destino resolvido por campo, sem depender de escopo externo
 // ---------------------------------------------------------------------------
@@ -259,7 +269,9 @@ app.get('/api/auth/status', wrap((req, res) => {
 }));
 
 app.get('/api/auth/google/start', wrap((req, res) => {
-  const { url, state, nonce } = auth.beginLogin({ returnTo: String(req.query.returnTo || '/') });
+  // Domínio configurado ≠ domínio acessado → erro claro AQUI, não um 400 no Google.
+  googleCreds.assertDomainConsistent(req);
+  const { url, state, nonce } = auth.beginLogin({ returnTo: String(req.query.returnTo || '/'), req });
 
   // `state` e `nonce` viajam em cookie HttpOnly de curta duração (proteção CSRF).
   res.setHeader('Set-Cookie', auth.buildCookie(
@@ -283,7 +295,8 @@ app.get('/api/auth/google/callback', wrap(async (req, res) => {
       expectedState: expected.state,
       nonce: expected.nonce,
       userAgent: req.headers['user-agent'],
-      ip: req.ip
+      ip: req.ip,
+      req
     });
 
     res.setHeader('Set-Cookie', [
@@ -505,7 +518,7 @@ app.post('/api/core/unassigned-documents/:id/assign', requireUser, wrap((req, re
 // O client_secret entra, mas nunca sai: nenhuma resposta abaixo o devolve.
 
 app.get('/api/core/google-credentials', wrap((req, res) =>
-  res.json(googleCreds.status())));
+  res.json(googleCreds.status(req))));
 
 app.put('/api/core/google-credentials', requireUser, wrap((req, res) => {
   const { clientId, clientSecret } = req.body || {};
@@ -531,7 +544,7 @@ app.get('/api/core/gmail/senders', requireUser, wrap((req, res) =>
  * navegador, e a segunda conta nunca entra.
  */
 app.get('/api/core/gmail/senders/add-url', requireUser, wrap((req, res) =>
-  res.json({ url: gmail.getAuthUrl({ addSender: true }) })));
+  res.json({ url: gmail.getAuthUrl({ addSender: true, req: googleCreds.assertDomainConsistent(req) && req }) })));
 
 app.put('/api/core/gmail/senders/:id', requireUser, wrap((req, res) => {
   const id = Number(req.params.id);
@@ -733,7 +746,10 @@ app.post('/api/seasonal/integration/test', wrap(async (req, res) => res.json(awa
 
 app.get('/api/seasonal/gmail/status', wrap((req, res) => res.json(gmail.status())));
 
-app.get('/api/seasonal/gmail/auth-url', wrap((req, res) => res.json({ url: gmail.getAuthUrl() })));
+app.get('/api/seasonal/gmail/auth-url', wrap((req, res) => {
+  googleCreds.assertDomainConsistent(req);
+  res.json({ url: gmail.getAuthUrl({ req }) });
+}));
 
 /**
  * O Google volta para cá com `error=` quando NÃO concede a permissão. O caso
@@ -780,7 +796,7 @@ app.get('/api/seasonal/gmail/callback', wrap(async (req, res) => {
   // que não existe.
   let out;
   try {
-    out = await gmail.handleCallback(String(req.query.code), { userId: req.user ? req.user.id : 1 });
+    out = await gmail.handleCallback(String(req.query.code), { userId: req.user ? req.user.id : 1, req });
   } catch (err) {
     const status = err.status || (err.userFacing ? 400 : 500);
     const message = err.userFacing
@@ -1008,7 +1024,22 @@ const server = app.listen(PORT, () => {
   console.log(`  schema v${migration.to}${migration.dropped && migration.dropped.length ? ` (migração aplicada: ${migration.dropped.length} tabela(s) legada(s) removida(s))` : ''}`);
   console.log(`  agentes: ${check.ok ? 'integridade verificada' : 'FALHA DE INTEGRIDADE — veja /api/core/agents/self-check'}`);
   console.log(`  robôs:   ${sched.enabled ? `ligados (tique de ${sched.tickSeconds}s)` : 'em espera — habilite a automação para rodarem sozinhos'}`);
-  console.log(`  IA:      ${ai.status().llmAvailable ? `${ai.status().provider} / ${ai.status().model}` : 'modo determinístico (nenhum LLM configurado)'}\n`);
+  console.log(`  IA:      ${ai.status().llmAvailable ? `${ai.status().provider} / ${ai.status().model}` : 'modo determinístico (nenhum LLM configurado)'}`);
+
+  // Domínio público e URIs do Google — impressos no boot porque é aqui que um
+  // .env herdado de outro domínio aparece antes de virar redirect_uri_mismatch.
+  const creds = googleCreds.status();
+  const hosts = [...new Set([creds.baseUrl, creds.gmailRedirectUri, creds.signinRedirectUri]
+    .map(u => { try { return new URL(u).host; } catch (e) { return ''; } }).filter(Boolean))];
+  console.log(`  domínio: ${creds.baseUrl} (${creds.baseUrlSource === 'env' ? 'APP_BASE_URL' : 'sem APP_BASE_URL — derivado de cada acesso'})`);
+  console.log(`  Google:  ${creds.gmailRedirectUri}`);
+  if (hosts.length > 1) {
+    console.log(`  ATENÇÃO: as URIs do Google apontam para hosts diferentes (${hosts.join(', ')}). ` +
+                'Alinhe APP_BASE_URL, GOOGLE_REDIRECT_URI e GOOGLE_SIGNIN_REDIRECT_URI — ou rode "node scripts/changeDomain.js <dominio>".');
+    logCore('auth', 'domain_config_inconsistent',
+      `URIs do Google em hosts diferentes: ${hosts.join(', ')}.`, { hosts }, null, 'warn');
+  }
+  console.log('');
 });
 
 /** Encerramento limpo: para o agendador antes de fechar o processo. */

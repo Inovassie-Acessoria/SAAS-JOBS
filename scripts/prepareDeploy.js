@@ -89,8 +89,13 @@ DB_PATH=/app/data/h2a_system.db
 # depois que o sistema subir. Pela tela é mais simples e o segredo fica cifrado.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=${base}/api/seasonal/gmail/callback
-GOOGLE_SIGNIN_REDIRECT_URI=${base}/api/auth/google/callback
+# As URIs de retorno são DERIVADAS de APP_BASE_URL — não as fixe aqui. Trocou
+# de domínio? Rode "npm run domain -- <novo-dominio>" e reinicie.
+# GOOGLE_REDIRECT_URI=${base}/api/seasonal/gmail/callback
+# GOOGLE_SIGNIN_REDIRECT_URI=${base}/api/auth/google/callback
+
+# Origem permitida para o navegador (mesmo domínio do app).
+CORS_ORIGIN=${base}
 
 # --- Descoberta de vagas -----------------------------------------------------
 # Gupy: MCP oficial, sem token e sem navegador.

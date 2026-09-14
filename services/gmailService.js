@@ -25,8 +25,8 @@ function ensureTokenDir() {
  * A resolução — e a precedência entre as duas origens — vive em um único
  * lugar, para que o login e o Gmail nunca discordem sobre qual cliente usar.
  */
-function credentials() {
-  const c = require('./googleCredentialsService').resolve();
+function credentials(req) {
+  const c = require('./googleCredentialsService').resolve(req);
   return {
     clientId: c.clientId,
     clientSecret: c.clientSecret,
@@ -39,8 +39,8 @@ function isConfigured() {
   return Boolean(c.clientId && c.clientSecret);
 }
 
-function oauthClient() {
-  const c = credentials();
+function oauthClient(req) {
+  const c = credentials(req);
   if (!isConfigured()) {
     const e = new Error('As credenciais do Google não estão configuradas. Defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no ambiente.');
     e.userFacing = true;
@@ -118,8 +118,10 @@ function setConnectionState({ connected, user = '', authStatus }) {
  * silêncio a conta já logada no navegador, e a segunda conta nunca entra — o
  * usuário clica, "dá certo", e nada muda.
  */
-function getAuthUrl({ addSender = false } = {}) {
-  const client = oauthClient();
+function getAuthUrl({ addSender = false, req = null } = {}) {
+  // `req` permite derivar o redirect_uri do endereço real do acesso quando o
+  // ambiente não fixa APP_BASE_URL — e é o que a checagem de domínio usa.
+  const client = oauthClient(req);
   return client.generateAuthUrl({
     access_type: 'offline',
     prompt: addSender ? 'consent select_account' : 'consent',
@@ -136,11 +138,11 @@ function getAuthUrl({ addSender = false } = {}) {
  * segredo trocado, código reutilizado) ficava só no log, onde ninguém olha na
  * hora. O código do Google segue junto para que o log e a tela concordem.
  */
-function describeGoogleError(err) {
+function describeGoogleError(err, req = null) {
   const data = (err && err.response && err.response.data) || {};
   const code = String(data.error || (err && err.code) || '').trim();
   const detail = String(data.error_description || (err && err.message) || '').trim();
-  const redirectUri = credentials().redirectUri;
+  const redirectUri = credentials(req).redirectUri;
 
   const known = {
     redirect_uri_mismatch:
@@ -166,17 +168,18 @@ function describeGoogleError(err) {
   return e;
 }
 
-async function handleCallback(code, { userId = 1 } = {}) {
-  const client = oauthClient();
+async function handleCallback(code, { userId = 1, req = null } = {}) {
+  // O mesmo redirect_uri do início do fluxo precisa ir na troca do código.
+  const client = oauthClient(req);
 
   let tokens;
   try {
     ({ tokens } = await client.getToken(code));
   } catch (err) {
-    const e = describeGoogleError(err);
+    const e = describeGoogleError(err, req);
     logCore('gmail', 'oauth_exchange_failed',
       `A troca do código de autorização falhou: ${e.googleError || 'erro'}${e.googleDetail ? ` — ${e.googleDetail}` : ''}.`,
-      { googleError: e.googleError, redirectUri: credentials().redirectUri }, null, 'error');
+      { googleError: e.googleError, redirectUri: credentials(req).redirectUri }, null, 'error');
     throw e;
   }
 

@@ -67,29 +67,116 @@ function storedClientSecret() {
 }
 
 /**
- * Base pública da aplicação, usada para montar as URIs de redirecionamento.
- * Em produção, APP_BASE_URL é o endereço real; localmente cai no localhost.
+ * Base pública da aplicação — a ÚNICA fonte da verdade sobre o domínio.
+ *
+ * Ordem: APP_BASE_URL (ou PUBLIC_BASE_URL) → o endereço pelo qual a requisição
+ * chegou (atrás de proxy: X-Forwarded-Proto / X-Forwarded-Host) → localhost.
+ *
+ * O caso que este desenho evita: o servidor trocou de domínio e o `.env`
+ * continuou apontando para o antigo. O Google então recebe um redirect_uri
+ * que não está cadastrado e devolve "redirect_uri_mismatch" — sem dizer que
+ * a culpa é de uma variável esquecida. Por isso `domainCheck()` compara o
+ * configurado com o endereço real do acesso e avisa ANTES de mandar para o
+ * Google.
  */
-function baseUrl() {
+function explicitBaseUrl() {
   const explicit = process.env.APP_BASE_URL || process.env.PUBLIC_BASE_URL || '';
-  if (explicit) return explicit.replace(/\/+$/, '');
-  const port = process.env.PORT || 3000;
-  return `http://localhost:${port}`;
+  return explicit ? explicit.trim().replace(/\/+$/, '') : '';
 }
 
-function gmailRedirectUri() {
-  return process.env.GOOGLE_REDIRECT_URI || `${baseUrl()}${GMAIL_CALLBACK_PATH}`;
+/** Endereço pelo qual esta requisição chegou, respeitando o proxy reverso. */
+function requestBaseUrl(req) {
+  if (!req || !req.headers) return '';
+  const fwdProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const fwdHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const host = fwdHost || String(req.headers.host || '').trim();
+  if (!host || !/^[a-z0-9.-]+(:[0-9]+)?$/i.test(host)) return '';
+  const proto = fwdProto || req.protocol || 'http';
+  return `${proto}://${host}`;
 }
 
-function signinRedirectUri() {
-  return process.env.GOOGLE_SIGNIN_REDIRECT_URI || `${baseUrl()}${SIGNIN_CALLBACK_PATH}`;
+function baseUrl(req) {
+  return explicitBaseUrl() || requestBaseUrl(req) || `http://localhost:${process.env.PORT || 3000}`;
+}
+
+function gmailRedirectUri(req) {
+  return process.env.GOOGLE_REDIRECT_URI || `${baseUrl(req)}${GMAIL_CALLBACK_PATH}`;
+}
+
+function signinRedirectUri(req) {
+  return process.env.GOOGLE_SIGNIN_REDIRECT_URI || process.env.GOOGLE_AUTH_REDIRECT_URI
+    || `${baseUrl(req)}${SIGNIN_CALLBACK_PATH}`;
+}
+
+function hostOf(url) {
+  try { return new URL(url).host.toLowerCase(); } catch (e) { return ''; }
+}
+
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/;
+
+/**
+ * Confere se o domínio configurado bate com o domínio pelo qual o usuário
+ * está acessando. Localhost e rede interna são ignorados: em desenvolvimento
+ * é normal acessar por 127.0.0.1 com APP_BASE_URL apontando para produção.
+ *
+ * Devolve `mismatch: true` com a lista exata de variáveis a corrigir — é a
+ * mensagem que a tela mostra no lugar do erro 400 do Google.
+ */
+function domainCheck(req) {
+  const requestBase = requestBaseUrl(req);
+  const requestHost = hostOf(requestBase);
+  const gmailUri = gmailRedirectUri(req);
+  const signinUri = signinRedirectUri(req);
+  const configuredHosts = [...new Set([hostOf(explicitBaseUrl()), hostOf(gmailUri), hostOf(signinUri)].filter(Boolean))];
+
+  const local = !requestHost || LOCAL_HOST.test(requestHost);
+  const wrong = local ? [] : configuredHosts.filter(h => h !== requestHost);
+
+  const differs = (v) => v && hostOf(v) && hostOf(v) !== requestHost;
+  const vars = [];
+  if (differs(process.env.APP_BASE_URL)) vars.push('APP_BASE_URL');
+  if (differs(process.env.PUBLIC_BASE_URL)) vars.push('PUBLIC_BASE_URL');
+  if (differs(process.env.GOOGLE_REDIRECT_URI)) vars.push('GOOGLE_REDIRECT_URI');
+  if (differs(process.env.GOOGLE_SIGNIN_REDIRECT_URI)) vars.push('GOOGLE_SIGNIN_REDIRECT_URI');
+  if (differs(process.env.GOOGLE_AUTH_REDIRECT_URI)) vars.push('GOOGLE_AUTH_REDIRECT_URI');
+  if (differs(process.env.CORS_ORIGIN)) vars.push('CORS_ORIGIN');
+  if (process.env.DOMAIN && String(process.env.DOMAIN).trim().toLowerCase() !== requestHost) vars.push('DOMAIN');
+
+  const mismatch = !local && wrong.length > 0;
+  return {
+    requestBase, requestHost, configuredHosts, mismatch, local,
+    variablesToFix: mismatch ? vars : [],
+    gmailRedirectUri: gmailUri, signinRedirectUri: signinUri,
+    expectedGmailRedirectUri: requestBase ? `${requestBase}${GMAIL_CALLBACK_PATH}` : gmailUri,
+    expectedSigninRedirectUri: requestBase ? `${requestBase}${SIGNIN_CALLBACK_PATH}` : signinUri,
+    message: mismatch
+      ? `O servidor está configurado para ${wrong.join(', ')}, mas você está acessando por ${requestHost}. ` +
+        `Corrija no ambiente do servidor (${vars.length ? vars.join(', ') : 'APP_BASE_URL'}) para ${requestBase} e reinicie — ` +
+        `ou rode "node scripts/changeDomain.js ${requestHost}". Depois, no Google Cloud Console, cadastre ` +
+        `${requestBase}${GMAIL_CALLBACK_PATH} e ${requestBase}${SIGNIN_CALLBACK_PATH} em "URIs de redirecionamento autorizados".`
+      : null
+  };
+}
+
+/**
+ * Exige coerência de domínio antes de iniciar um fluxo OAuth. Sem isto o
+ * usuário é mandado ao Google só para receber um 400 sem explicação.
+ */
+function assertDomainConsistent(req) {
+  const c = domainCheck(req);
+  if (c.mismatch) {
+    const e = new Error(c.message);
+    e.userFacing = true; e.status = 409; e.code = 'DOMAIN_MISMATCH'; e.domainCheck = c;
+    throw e;
+  }
+  return c;
 }
 
 /**
  * As credenciais em vigor, com a origem de cada uma.
  * `source` é o que permite à interface explicar POR QUE algo está como está.
  */
-function resolve() {
+function resolve(req) {
   const envId = process.env.GOOGLE_CLIENT_ID || '';
   const envSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 
@@ -102,8 +189,8 @@ function resolve() {
   return {
     clientId,
     clientSecret,
-    gmailRedirectUri: gmailRedirectUri(),
-    signinRedirectUri: signinRedirectUri(),
+    gmailRedirectUri: gmailRedirectUri(req),
+    signinRedirectUri: signinRedirectUri(req),
     source: envId && envSecret ? 'env' : (clientId && clientSecret ? 'database' : 'none'),
     configured: Boolean(clientId && clientSecret)
   };
@@ -120,9 +207,10 @@ function maskClientId(id) {
 /**
  * Estado para a interface. NUNCA inclui o client_secret.
  */
-function status() {
-  const r = resolve();
+function status(req) {
+  const r = resolve(req);
   return {
+    domain: domainCheck(req),
     configured: r.configured,
     source: r.source,
     managedByEnv: r.source === 'env',
@@ -133,7 +221,8 @@ function status() {
     encryptionConfigured: secretBox.isConfigured(),
     gmailRedirectUri: r.gmailRedirectUri,
     signinRedirectUri: r.signinRedirectUri,
-    baseUrl: baseUrl(),
+    baseUrl: baseUrl(req),
+    baseUrlSource: explicitBaseUrl() ? 'env' : (requestBaseUrl(req) ? 'request' : 'localhost'),
     consoleUrl: 'https://console.cloud.google.com/apis/credentials'
   };
 }
@@ -205,5 +294,6 @@ module.exports = {
   KEY_CLIENT_ID, KEY_CLIENT_SECRET,
   GMAIL_CALLBACK_PATH, SIGNIN_CALLBACK_PATH,
   baseUrl, gmailRedirectUri, signinRedirectUri,
-  resolve, status, save, clear, maskClientId
+  resolve, status, save, clear, maskClientId,
+  requestBaseUrl, explicitBaseUrl, domainCheck, assertDomainConsistent
 };

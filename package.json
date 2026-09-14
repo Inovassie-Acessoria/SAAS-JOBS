@@ -16,7 +16,8 @@
     "browser:check": "node scripts/browserCheck.js",
     "browser:profiles": "node scripts/browserProfiles.js",
     "deploy:prepare": "node scripts/prepareDeploy.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "domain": "node scripts/changeDomain.js"
   },
   "keywords": [
     "job-search",

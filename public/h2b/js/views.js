@@ -181,6 +181,20 @@ H2B.views = (function () {
 
   // ═══════════════════════════════════════════════════════════ CONFIGURAÇÕES
 
+  /**
+   * Domínio configurado no servidor ≠ domínio pelo qual o usuário está
+   * acessando: é a causa do "redirect_uri_mismatch" do Google. Mostra o que
+   * mudar, em vez de deixar o botão mandar o usuário para um erro 400.
+   */
+  function domainAlert(creds) {
+    const d = creds && creds.domain;
+    if (!d || !d.mismatch) return '';
+    return `<div class="alert al-red"><i class="ti ti-world-off"></i><div><b>Domínio do servidor não bate com este endereço.</b>
+      O servidor está configurado para <code>${esc(d.configuredHosts.join(', '))}</code>, mas você está em <code>${esc(d.requestHost)}</code> — o Google vai recusar com <i>redirect_uri_mismatch</i>.
+      <div class="hint" style="margin-top:6px">No servidor: <code>npm run domain -- ${esc(d.requestHost)}</code> (ou ajuste ${esc((d.variablesToFix || []).join(', ') || 'APP_BASE_URL')} no .env / painel da hospedagem) e reinicie.
+      Depois cadastre no Google Cloud: <code>${esc(d.expectedGmailRedirectUri)}</code> e <code>${esc(d.expectedSigninRedirectUri)}</code>.</div></div></div>`;
+  }
+
   async function renderSettings() {
     const el = $('#settings-body');
     el.innerHTML = '<div class="skel" style="height:120px"></div>';
@@ -209,6 +223,7 @@ H2B.views = (function () {
       <div class="prof-card" style="margin-bottom:12px">
         <div class="prof-card-hd"><i class="ti ti-brand-google"></i><span>Contas de envio (Gmail)</span><span class="tag ${senders.active ? 'tg' : 'tr'}" style="margin-left:auto">${senders.active} ativa(s)</span></div>
         <div class="prof-card-bd">
+          ${domainAlert(creds)}
           ${!creds.configured ? `<div class="alert al-amber"><i class="ti ti-key"></i><div><b>Credenciais do Google ainda não configuradas.</b> Preencha abaixo antes de conectar contas.</div></div>` : ''}
           ${senders.singleAccountWarning && senders.active <= 1 ? `<div class="alert al-blue"><i class="ti ti-info-circle"></i><div>Com uma conta só, tudo sai dela. Conecte 2–3 contas: o sistema alterna e ninguém passa do limite.</div></div>` : ''}
           ${(senders.senders || []).map(s => `<div class="doc-file-card" style="flex-wrap:wrap">
@@ -229,7 +244,7 @@ H2B.views = (function () {
           ${creds.managedByEnv ? '<div class="hint">Definidas pelo ambiente do servidor (.env). Não editáveis aqui.</div>' : `
           <div class="field"><label>Client ID</label><input class="input" id="st-cid" placeholder="xxxx.apps.googleusercontent.com" value="${creds.hasClientId ? esc(creds.clientIdMasked || '') : ''}"></div>
           <div class="field"><label>Client Secret ${creds.hasClientSecret ? '<span class="tag tg">guardado (criptografado)</span>' : ''}</label><input class="input" id="st-csec" type="password" placeholder="${creds.hasClientSecret ? '•••••••• (deixe vazio para manter)' : 'GOCSPX-…'}"></div>
-          <div class="hint">Redirect URI para cadastrar no Google Cloud: <code>${esc(creds.gmailRedirectUri || '')}</code></div>
+          <div class="hint">URIs para cadastrar no Google Cloud ("URIs de redirecionamento autorizados"):<br><code>${esc(creds.gmailRedirectUri || '')}</code><br><code>${esc(creds.signinRedirectUri || '')}</code><br>Domínio do sistema: <code>${esc(creds.baseUrl || '')}</code> ${creds.baseUrlSource === 'env' ? '(APP_BASE_URL)' : '(derivado do endereço de acesso — defina APP_BASE_URL em produção)'}</div>
           <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" id="st-save-creds"><i class="ti ti-device-floppy"></i> Salvar</button><a class="btn btn-secondary btn-sm" href="${esc(creds.consoleUrl)}" target="_blank" rel="noopener">Google Cloud ↗</a></div>`}
         </div>
       </div>
