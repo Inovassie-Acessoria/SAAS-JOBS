@@ -934,7 +934,7 @@ function legalVars() {
   const escapeHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   return {
     OPERATOR: escapeHtml(process.env.PUBLIC_OPERATOR_NAME || 'Inovassie Acessoria'),
-    EMAIL: escapeHtml(process.env.PUBLIC_CONTACT_EMAIL || 'inovassie@gmail.com'),
+    EMAIL: escapeHtml(process.env.PUBLIC_CONTACT_EMAIL || 'ghguilhermehintz@gmail.com'),
     BASE_URL: escapeHtml(process.env.APP_BASE_URL || process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`)
   };
 }
