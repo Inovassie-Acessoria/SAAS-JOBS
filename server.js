@@ -923,6 +923,30 @@ function htmlMessage(title, body, { ok = true } = {}) {
 // Front H2B (cópia do sistema de referência) vive em /h2b/ ao lado do front
 // atual, até a troca definitiva. Sem cache do index para que atualizações
 // cheguem sem "limpar o cache" no celular.
+// Páginas públicas — Política de Privacidade e Termos de Serviço. Sem login:
+// o Google exige que sejam acessíveis a qualquer pessoa para aprovar o app
+// OAuth. Operador, e-mail de contato e URL vêm do ambiente; o HTML é estático.
+const LEGAL_PAGES = {
+  '/privacidade': 'privacidade.html', '/privacy': 'privacidade.html', '/politica-de-privacidade': 'privacidade.html',
+  '/termos': 'termos.html', '/terms': 'termos.html', '/termos-de-servico': 'termos.html'
+};
+function legalVars() {
+  const escapeHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return {
+    OPERATOR: escapeHtml(process.env.PUBLIC_OPERATOR_NAME || 'Inovassie Acessoria'),
+    EMAIL: escapeHtml(process.env.PUBLIC_CONTACT_EMAIL || 'inovassie@gmail.com'),
+    BASE_URL: escapeHtml(process.env.APP_BASE_URL || process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`)
+  };
+}
+app.get(Object.keys(LEGAL_PAGES), (req, res) => {
+  const file = LEGAL_PAGES[req.path.replace(/\/+$/, '')] || LEGAL_PAGES[req.path];
+  const vars = legalVars();
+  const html = fs.readFileSync(path.join(__dirname, 'public', 'legal', file), 'utf8')
+    .replace(/\{\{(OPERATOR|EMAIL|BASE_URL)\}\}/g, (m, k) => vars[k]);
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.type('html').send(html);
+});
+
 app.get(['/h2b', '/h2b/'], (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', 'h2b', 'index.html'));

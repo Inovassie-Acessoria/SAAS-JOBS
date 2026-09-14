@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="index,follow">
+<meta name="description" content="Política de Privacidade do H2 Dream — quais dados o sistema guarda, como usa a sua conta Google/Gmail e como você controla tudo.">
+<title>Política de Privacidade — H2 Dream</title>
+<link rel="icon" href="/h2b/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal/legal.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hdr">
+    <div class="brand"><div class="ico">🚀</div><b><a href="/h2b/">H2 Dream</a></b></div>
+    <h1>Política de Privacidade</h1>
+    <div class="meta"><span>Versão 1.0</span><span>Vigente desde 14 de setembro de 2026</span><span>Operador: {{OPERATOR}}</span></div>
+  </header>
+
+  <main class="card">
+
+    <p>Esta Política explica, em linguagem direta, quais dados o <b>H2 Dream</b> (o “Sistema”) coleta, para que usa, com quem compartilha e como você controla tudo isso. O Sistema é uma ferramenta de candidatura a vagas de trabalho sazonal nos Estados Unidos (vistos H-2A e H-2B) que envia e-mails de candidatura <b>em seu nome, a partir da sua própria conta Gmail</b>, para empregadores listados no feed público do Departamento do Trabalho dos EUA (DOL).</p>
+
+    <div class="box purple"><b>Resumo em uma frase:</b> o Sistema guarda o que você digita e envia (perfil, currículo, cartas, modelos de e-mail), usa a permissão <code>gmail.send</code> da sua conta Google somente para enviar as candidaturas que você configurou, não lê sua caixa de entrada, não vende nem usa seus dados para publicidade, e você pode apagar tudo quando quiser.</div>
+
+    <nav class="toc"><b>Índice</b>
+      <ol>
+        <li><a href="#s1">Quem é o responsável</a></li>
+        <li><a href="#s2">Quais dados são coletados</a></li>
+        <li><a href="#s3">Para que os dados são usados</a></li>
+        <li><a href="#s4">Dados da sua conta Google (Gmail)</a></li>
+        <li><a href="#s5">Com quem os dados são compartilhados</a></li>
+        <li><a href="#s6">Dados de empregadores (feed do DOL)</a></li>
+        <li><a href="#s7">Onde ficam e como são protegidos</a></li>
+        <li><a href="#s8">Por quanto tempo ficam guardados</a></li>
+        <li><a href="#s9">Seus direitos e como exercê-los</a></li>
+        <li><a href="#s10">Cookies e armazenamento no navegador</a></li>
+        <li><a href="#s11">Transferência internacional</a></li>
+        <li><a href="#s12">Menores de idade</a></li>
+        <li><a href="#s13">Mudanças nesta Política</a></li>
+        <li><a href="#s14">Contato</a></li>
+        <li><a href="#s15">English summary (Google API disclosure)</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="s1"><span class="n">1.</span> Quem é o responsável</h2>
+    <p>O Sistema é operado por <b>{{OPERATOR}}</b> (“Operador”, “nós”), que é o controlador dos dados pessoais tratados nele, nos termos da Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018, “LGPD”). O Sistema roda em um servidor administrado pelo Operador, e não em uma plataforma compartilhada com outros produtos.</p>
+    <p>Canal de contato para qualquer assunto de privacidade: <a href="mailto:{{EMAIL}}">{{EMAIL}}</a>.</p>
+
+    <h2 id="s2"><span class="n">2.</span> Quais dados são coletados</h2>
+    <p>Só coletamos o que é necessário para preparar e enviar candidaturas. Nada é coletado em segundo plano sem você saber.</p>
+
+    <h3>2.1 Dados que você mesmo informa</h3>
+    <ul>
+      <li><b>Identificação e contato:</b> nome completo, e-mail, telefone, cidade e estado.</li>
+      <li><b>Perfil profissional:</b> título, resumo, anos de experiência, habilidades, idiomas, nível de inglês, certificações, setores em que já trabalhou, disponibilidade (datas), autorização de trabalho e habilitação.</li>
+      <li><b>Perfil de motorista (opcional):</b> status e classe da CDL, histórico de direção, experiência com caminhão e carreta, câmbio manual, endossos, equipamentos, capacidade de carga e estados aceitos. Só é relevante para vagas de direção e pode ficar em branco.</li>
+      <li><b>Documentos:</b> currículo (PDF/DOCX), carta de apresentação e cartas de recomendação. O texto desses arquivos é extraído e guardado para a análise de compatibilidade (ATS) e para a verificação de veracidade dos e-mails (“Truth Guard”).</li>
+      <li><b>Modelos de e-mail:</b> assuntos e corpos que você escreve e que o Sistema alterna a cada envio.</li>
+      <li><b>Preferências de busca e envio:</b> tipo de visto, cargos, estados, salário mínimo, limite diário, ritmo e modo de revisão.</li>
+    </ul>
+
+    <h3>2.2 Dados da sua conta Google</h3>
+    <ul>
+      <li><b>Login:</b> se o login com Google estiver ativado, recebemos seu e-mail, nome e foto de perfil (escopos <code>openid</code>, <code>email</code>, <code>profile</code>) apenas para identificar você.</li>
+      <li><b>Contas de envio (Gmail):</b> para cada conta que você conecta, guardamos o endereço de e-mail e os <b>tokens OAuth</b> emitidos pelo Google com os escopos <code>gmail.send</code> e <code>userinfo.email</code>. Os tokens ficam <b>criptografados (AES-256-GCM)</b> no banco de dados. <b>Nunca</b> pedimos, vemos ou guardamos a sua senha do Google.</li>
+    </ul>
+
+    <h3>2.3 Dados gerados pelo uso</h3>
+    <ul>
+      <li><b>Registro de candidaturas:</b> para cada e-mail enviado, guardamos a vaga (número da ordem, empregador), o destinatário, o assunto, o texto enviado, a lista de anexos, a conta de origem e a data/hora. Isso é o seu histórico e também a proteção contra envio duplicado.</li>
+      <li><b>Fila e validações:</b> pacotes preparados, resultado das verificações (validação, Truth Guard, portões de decisão), motivos de revisão e erros de envio.</li>
+      <li><b>Logs técnicos e trilha de auditoria:</b> ações do sistema e dos agentes automáticos, mensagens de erro, identificadores de correlação e horários. Não guardamos o conteúdo da sua caixa de entrada nem qualquer e-mail recebido.</li>
+      <li><b>Sessão:</b> um cookie de sessão (veja a seção 10) e o registro das sessões ativas (data de criação e expiração).</li>
+      <li><b>Preferências de interface:</b> tema claro/escuro, modo de tela, filtros da lista de vagas, se o tour já foi visto.</li>
+      <li><b>Notificações internas:</b> avisos sobre envios, falhas, cota e importações, visíveis só para você dentro do Sistema.</li>
+    </ul>
+
+    <h2 id="s3"><span class="n">3.</span> Para que os dados são usados</h2>
+    <div class="tbl"><table>
+      <tr><th>Finalidade</th><th>Dados envolvidos</th><th>Base legal (LGPD)</th></tr>
+      <tr><td>Preparar e enviar a candidatura a uma vaga (assunto, corpo, anexos)</td><td>Perfil, documentos, modelos de e-mail, tokens da conta de envio</td><td>Execução do serviço solicitado por você (art. 7º, V) e consentimento para o Gmail (art. 7º, I)</td></tr>
+      <tr><td>Escolher o currículo e a carta certos para cada vaga (H-2A ou H-2B)</td><td>Documentos e seu tipo de visto</td><td>Execução do serviço</td></tr>
+      <tr><td>Verificar que o texto do e-mail só afirma o que o seu perfil sustenta (Truth Guard) e comparar requisitos da vaga com o seu perfil</td><td>Perfil, perfil de motorista, texto extraído dos documentos</td><td>Execução do serviço; legítimo interesse em não enviar informação falsa a empregadores (art. 7º, IX)</td></tr>
+      <tr><td>Respeitar limites de envio por dia e por conta e alternar entre suas contas Gmail</td><td>Contadores de envio, contas conectadas</td><td>Execução do serviço; legítimo interesse em proteger suas contas contra bloqueio</td></tr>
+      <tr><td>Evitar candidatura duplicada ao mesmo empregador</td><td>Registro de candidaturas</td><td>Execução do serviço</td></tr>
+      <tr><td>Mostrar histórico, números e logs para você</td><td>Registro de candidaturas, fila, logs</td><td>Execução do serviço</td></tr>
+      <tr><td>Manter você autenticado</td><td>Cookie e registro de sessão</td><td>Execução do serviço</td></tr>
+      <tr><td>Diagnosticar erros e manter a segurança</td><td>Logs técnicos, trilha de auditoria</td><td>Legítimo interesse (art. 7º, IX) e cumprimento de obrigação legal (art. 7º, II)</td></tr>
+    </table></div>
+    <p>Não usamos seus dados para publicidade, perfilamento comercial, venda ou qualquer finalidade não listada aqui. Não há decisões automatizadas que produzam efeitos jurídicos sobre você: o Sistema decide apenas <i>se e quando</i> enviar um e-mail de candidatura conforme as regras que você configurou, e você pode revisar, pausar ou desligar a qualquer momento.</p>
+
+    <h2 id="s4"><span class="n">4.</span> Dados da sua conta Google (Gmail)</h2>
+    <p>Esta seção detalha o uso das APIs do Google, como exige a <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Dados do Usuário dos Serviços de API do Google</a>.</p>
+    <ul>
+      <li><b>O que pedimos:</b> <code>https://www.googleapis.com/auth/gmail.send</code> (enviar e-mails em seu nome) e <code>https://www.googleapis.com/auth/userinfo.email</code> (saber qual endereço foi conectado). Para o login, apenas <code>openid</code>, <code>email</code> e <code>profile</code>.</li>
+      <li><b>O que fazemos:</b> enviamos, pela API do Gmail, os e-mails de candidatura que você preparou manualmente ou que o envio automático montou dentro das regras que você definiu. Cada e-mail enviado fica registrado no seu histórico dentro do Sistema.</li>
+      <li><b>O que não fazemos:</b> não lemos, listamos, buscamos nem apagamos mensagens da sua caixa (não temos escopo de leitura); não acessamos contatos, agenda, Drive ou qualquer outro serviço; não usamos os dados do Google para anúncios; não os vendemos nem os transferimos a terceiros, exceto os próprios destinatários de cada e-mail (os empregadores) e o Google, que é quem entrega a mensagem.</li>
+      <li><b>Acesso humano:</b> ninguém do Operador lê os dados obtidos do Google, salvo (a) com o seu consentimento expresso para um suporte específico, (b) por segurança, para investigar abuso ou incidente, (c) por exigência legal, ou (d) de forma agregada e anônima para operação interna.</li>
+      <li><b>Segurança dos tokens:</b> ficam criptografados no banco de dados com AES-256-GCM e chave mantida fora do banco; nunca são exibidos na interface nem devolvidos pela API.</li>
+      <li><b>Como revogar:</b> em <b>Configurações → Contas de envio → Remover</b> (o token é apagado na hora) ou diretamente em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>. Se o Google invalidar um token (senha trocada, permissão revogada), a conta é desativada automaticamente e o Sistema para de usá-la.</li>
+      <li><b>Uso limitado:</b> o uso e a transferência, para qualquer outro aplicativo, de informações recebidas das APIs do Google pelo H2 Dream obedecem à Política de Dados do Usuário dos Serviços de API do Google, inclusive aos requisitos de Uso Limitado (<i>Limited Use</i>).</li>
+    </ul>
+
+    <h2 id="s5"><span class="n">5.</span> Com quem os dados são compartilhados</h2>
+    <ul>
+      <li><b>Empregadores e seus agentes:</b> ao enviar uma candidatura, o destinatário recebe seu nome, contato, o texto do e-mail, o currículo e as cartas anexadas. A partir daí, o tratamento desses dados pelo empregador segue as regras dele, não as nossas.</li>
+      <li><b>Google LLC:</b> para login e para o envio dos e-mails pela API do Gmail, conforme a seção 4 e a <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Política de Privacidade do Google</a>.</li>
+      <li><b>Departamento do Trabalho dos EUA (DOL):</b> apenas <i>lemos</i> o feed público de vagas. Nenhum dado seu é enviado ao DOL.</li>
+      <li><b>Provedor de hospedagem:</b> o servidor do Sistema fica em um provedor de infraestrutura (VPS) contratado pelo Operador, que armazena os dados fisicamente mas não os acessa nem os trata por conta própria.</li>
+      <li><b>Provedor de IA (opcional, desligado por padrão):</b> o Sistema funciona de forma determinística, sem inteligência artificial externa. Se o Operador ativar um provedor (OpenAI, Google Gemini ou Anthropic) para melhorar a análise de vagas ou a redação, trechos do texto da vaga e do seu perfil poderão ser enviados a esse provedor exclusivamente para gerar a resposta, sob os termos dele. Esta Política será atualizada e você será avisado antes de qualquer ativação.</li>
+      <li><b>Autoridades:</b> somente quando houver obrigação legal ou ordem de autoridade competente.</li>
+    </ul>
+    <p><b>Não vendemos</b> dados pessoais e não os compartilhamos com corretores de dados, redes de anúncios ou parceiros comerciais.</p>
+
+    <h2 id="s6"><span class="n">6.</span> Dados de empregadores (feed do DOL)</h2>
+    <p>As vagas, os nomes de empresas, endereços, telefones e e-mails de contato exibidos no Sistema vêm do <b>registro público de ordens de trabalho H-2A/H-2B</b> publicado pelo Departamento do Trabalho dos EUA (seasonaljobs.dol.gov). Esses dados são divulgados pelo próprio governo americano com a finalidade de permitir que trabalhadores se candidatem. O Sistema os usa exclusivamente para isso: exibir a vaga e endereçar a sua candidatura. Não os enriquecemos com outras fontes nem os usamos para outra finalidade. Se um empregador pedir para não receber mais mensagens, descarte a vaga no Sistema — ela deixa de receber envios.</p>
+
+    <h2 id="s7"><span class="n">7.</span> Onde ficam e como são protegidos</h2>
+    <ul>
+      <li><b>Local:</b> banco de dados e arquivos ficam no servidor do Operador. Não há cópia em serviços de terceiros além dos citados na seção 5.</li>
+      <li><b>Segredos:</b> tokens do Google e o segredo do cliente OAuth ficam criptografados (AES-256-GCM). Senhas nunca são armazenadas — o acesso ao Google é sempre por OAuth.</li>
+      <li><b>Transporte:</b> o acesso ao Sistema em produção é feito por HTTPS. O cookie de sessão é <code>HttpOnly</code>, <code>Secure</code> e <code>SameSite</code>.</li>
+      <li><b>Uploads:</b> só PDF e DOCX, com verificação do conteúdo real do arquivo e limite de 15 MB; os arquivos ficam fora da pasta pública do servidor.</li>
+      <li><b>Controles operacionais:</b> limite de requisições por minuto, cota atômica de envios por dia e por conta, pausa global de emergência, trilha de auditoria de cada ação automática e cópias de segurança do banco.</li>
+      <li><b>Incidentes:</b> se ocorrer um incidente de segurança que possa causar risco relevante a você, comunicaremos você e, quando exigido, a Autoridade Nacional de Proteção de Dados (ANPD), nos prazos legais.</li>
+    </ul>
+    <p class="hint">Nenhum sistema é 100% seguro. Medidas técnicas reduzem risco; não o eliminam. Mantenha sua conta Google protegida com verificação em duas etapas.</p>
+
+    <h2 id="s8"><span class="n">8.</span> Por quanto tempo ficam guardados</h2>
+    <div class="tbl"><table>
+      <tr><th>Dado</th><th>Retenção</th></tr>
+      <tr><td>Perfil, documentos, modelos de e-mail, preferências</td><td>Enquanto você usar o Sistema, ou até você apagar o item ou pedir a exclusão da conta.</td></tr>
+      <tr><td>Tokens das contas Gmail</td><td>Até você remover a conta no Sistema ou revogar a permissão no Google; a remoção apaga o token imediatamente.</td></tr>
+      <tr><td>Registro de candidaturas enviadas</td><td>Enquanto a conta existir, porque é a proteção contra envio duplicado ao mesmo empregador. Pode ser apagado a seu pedido (seção 9).</td></tr>
+      <tr><td>Fila, validações e notificações</td><td>Até a conclusão ou o descarte, com limpeza automática das mais antigas.</td></tr>
+      <tr><td>Trilha de auditoria dos agentes automáticos</td><td>90 dias por padrão, apagada automaticamente.</td></tr>
+      <tr><td>Sessões</td><td>7 dias por padrão; você pode encerrar antes em Conta → Sessões.</td></tr>
+      <tr><td>Cópias de segurança</td><td>Rotação periódica; uma exclusão pedida por você é refletida nas cópias na rotação seguinte.</td></tr>
+    </table></div>
+
+    <h2 id="s9"><span class="n">9.</span> Seus direitos e como exercê-los</h2>
+    <p>Você tem, nos termos do art. 18 da LGPD, os direitos de <b>confirmação</b> do tratamento, <b>acesso</b>, <b>correção</b>, <b>anonimização, bloqueio ou eliminação</b> de dados desnecessários ou excessivos, <b>portabilidade</b>, <b>informação sobre compartilhamento</b>, <b>informação sobre a possibilidade de não consentir</b> e <b>revogação do consentimento</b>.</p>
+    <p>Boa parte disso você faz sozinho, dentro do Sistema:</p>
+    <ul>
+      <li><b>Ver e corrigir:</b> Perfil → Eu, Perfil → Currículos, Perfil → Modelos de e-mail.</li>
+      <li><b>Apagar documentos:</b> Perfil → Currículos → Remover.</li>
+      <li><b>Revogar o Gmail:</b> Configurações → Contas de envio → Remover, ou pelo painel de permissões do Google.</li>
+      <li><b>Exportar:</b> Histórico → CSV.</li>
+      <li><b>Encerrar sessões:</b> Conta → Sessões → Encerrar outras sessões.</li>
+      <li><b>Parar todo envio:</b> Configurações → Pausar todos os envios, ou Envio automático → Desligar.</li>
+    </ul>
+    <p>Para exclusão completa da conta e dos registros, ou qualquer outro pedido, escreva para <a href="mailto:{{EMAIL}}">{{EMAIL}}</a>. Respondemos no prazo legal (até 15 dias para o pedido de acesso completo, conforme art. 19 da LGPD). Você também pode apresentar reclamação à ANPD.</p>
+
+    <h2 id="s10"><span class="n">10.</span> Cookies e armazenamento no navegador</h2>
+    <ul>
+      <li><b><code>ji_session</code></b> — cookie de sessão, essencial, <code>HttpOnly</code>/<code>Secure</code>/<code>SameSite</code>, validade de 7 dias por padrão.</li>
+      <li><b>Cookie de estado do OAuth</b> — usado apenas durante o login com Google, por até 10 minutos, para impedir falsificação de requisição (CSRF).</li>
+      <li><b>localStorage</b> — guarda tema, modo de tela e preferências de interface no seu aparelho. Nada disso identifica você nem sai do navegador.</li>
+      <li><b>Service worker</b> — mantém uma cópia da interface para abrir sem conexão. Não guarda dados da API.</li>
+    </ul>
+    <p>Não usamos cookies de publicidade, de rastreamento entre sites nem ferramentas de analytics de terceiros.</p>
+
+    <h2 id="s11"><span class="n">11.</span> Transferência internacional</h2>
+    <p>Por natureza, o Sistema envia seus dados de candidatura para empregadores <b>nos Estados Unidos</b> — é o objetivo do serviço, e isso ocorre a seu pedido (art. 33, VIII, da LGPD). O Google também pode processar dados em servidores fora do Brasil. O servidor do Operador pode estar hospedado no Brasil ou no exterior; em qualquer caso, aplicam-se as proteções desta Política.</p>
+
+    <h2 id="s12"><span class="n">12.</span> Menores de idade</h2>
+    <p>O Sistema destina-se a maiores de 18 anos, idade mínima para os programas H-2A e H-2B. Não coletamos intencionalmente dados de menores; se identificarmos um cadastro assim, ele será removido.</p>
+
+    <h2 id="s13"><span class="n">13.</span> Mudanças nesta Política</h2>
+    <p>Podemos atualizar esta Política para refletir mudanças no Sistema ou na lei. A versão vigente fica sempre nesta página, com a data no topo. Mudanças relevantes — por exemplo, um novo compartilhamento ou a ativação de um provedor de IA — serão avisadas dentro do Sistema antes de valer.</p>
+
+    <h2 id="s14"><span class="n">14.</span> Contato</h2>
+    <p><b>{{OPERATOR}}</b><br>E-mail: <a href="mailto:{{EMAIL}}">{{EMAIL}}</a><br>Endereço do Sistema: <a href="{{BASE_URL}}">{{BASE_URL}}</a></p>
+    <p>Veja também os <a href="/termos">Termos de Serviço</a>.</p>
+
+    <h2 id="s15"><span class="n">15.</span> English summary (Google API disclosure)</h2>
+    <div class="en">
+      <p><b>H2 Dream</b> is a personal job-application tool for U.S. H-2A/H-2B seasonal jobs. It sends application e-mails on the user's behalf from the user's own Gmail account(s) to employers listed in the U.S. Department of Labor public job-order feed.</p>
+      <p><b>Google data we access:</b> for sign-in, <code>openid</code>, <code>email</code>, <code>profile</code>; for sending, <code>gmail.send</code> and <code>userinfo.email</code>. We use <code>gmail.send</code> solely to send the application e-mails the user prepares or configures. We do not read, list, search or delete any mailbox content, and we request no read scope.</p>
+      <p>OAuth tokens are stored encrypted (AES-256-GCM) and are deleted when the user removes the account or revokes access at myaccount.google.com/permissions. Google user data is never used for advertising, never sold, and never shared with third parties other than the e-mail recipients (employers) chosen by the user and Google itself. Humans do not read Google user data except with the user's explicit consent for support, for security investigations, or where required by law.</p>
+      <p>H2 Dream's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+      <p>Contact: <a href="mailto:{{EMAIL}}">{{EMAIL}}</a>.</p>
+    </div>
+
+  </main>
+
+  <footer class="foot">
+    <nav><a href="/h2b/">Abrir o H2 Dream</a><a href="/termos">Termos de Serviço</a><a href="/privacidade">Política de Privacidade</a></nav>
+    <span>© 2026 {{OPERATOR}}</span>
+  </footer>
+</div>
+</body>
+</html>

@@ -276,7 +276,7 @@ H2B.views = (function () {
           ${discarded.map(j => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px"><div style="flex:1;min-width:0"><b>${esc(j.job_title)}</b><div class="hint">${esc(j.employer_name)} · ${esc(j.employer_state || '')}</div></div><button class="btn btn-secondary btn-xs" data-restore="${j.id}">Restaurar</button></div>`).join('') || '<div class="hint">Nenhuma.</div>'}
         </div>
       </div>
-      <div class="hint" style="margin-top:14px;text-align:center">H2 Dream · uso pessoal · dados neste servidor</div>
+      <div class="hint" style="margin-top:14px;text-align:center">H2 Dream · uso pessoal · dados neste servidor<br><a href="/privacidade" target="_blank" rel="noopener" style="color:var(--blue)">Política de Privacidade</a> · <a href="/termos" target="_blank" rel="noopener" style="color:var(--blue)">Termos de Serviço</a></div>
     `;
 
     // --- wiring ---
