@@ -3,12 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Job Intelligence</title>
-  <meta name="description" content="Descoberta, análise ATS e priorização de vagas para Gupy, Indeed e Seasonal Jobs.">
+  <title>H2DREAM | Job Intelligence</title>
+  <meta name="description" content="H2DREAM é o aplicativo de candidatura a vagas H-2A e H-2B nos Estados Unidos, hospedado em saas.inovassie.com.br pela plataforma Job Intelligence — descoberta, análise ATS e priorização de vagas para Gupy, Indeed e Seasonal Jobs.">
+  <meta name="application-name" content="H2DREAM">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://saas.inovassie.com.br/">
+  <link rel="icon" href="/h2b/icon.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="H2DREAM">
+  <meta property="og:title" content="H2DREAM | Job Intelligence">
+  <meta property="og:description" content="H2DREAM: candidatura automática a vagas H-2A e H-2B nos EUA, com Job Intelligence para Gupy, Indeed e Seasonal Jobs.">
+  <meta property="og:url" content="https://saas.inovassie.com.br/">
+  <meta property="og:image" content="https://saas.inovassie.com.br/h2b/icon-512.png">
+  <meta property="og:locale" content="pt_BR">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="H2DREAM | Job Intelligence">
+  <meta name="twitter:description" content="H2DREAM: candidatura automática a vagas H-2A e H-2B nos EUA, com Job Intelligence para Gupy, Indeed e Seasonal Jobs.">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/css/app.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "H2DREAM",
+    "alternateName": ["H2 Dream", "Job Intelligence"],
+    "url": "https://saas.inovassie.com.br/",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "description": "Aplicativo de candidatura a vagas de trabalho sazonal nos Estados Unidos (vistos H-2A e H-2B), parte da plataforma Job Intelligence.",
+    "publisher": { "@type": "Organization", "name": "Inovassie Acessoria", "url": "https://saas.inovassie.com.br/" },
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+    "sameAs": ["https://saas.inovassie.com.br/privacidade", "https://saas.inovassie.com.br/termos"]
+  }
+  </script>
 </head>
 <body>
   <a href="#main" class="sr-only">Pular para o conteúdo</a>
@@ -18,6 +50,7 @@
       <span class="brand-mark" aria-hidden="true">JI</span>
       <span>Job Intelligence</span>
     </button>
+    <a class="brand-app" href="/h2b/" title="Abrir o aplicativo H2DREAM"><span aria-hidden="true">🚀</span> H2DREAM</a>
     <nav class="crumb" id="crumb" aria-label="Trilha de navegação"></nav>
     <div class="topbar-right" id="topbar-right"></div>
   </header>
@@ -25,9 +58,35 @@
   <div class="shell">
     <nav class="sidebar" id="sidebar" aria-label="Navegação do produto" hidden></nav>
     <main class="main" id="main" tabindex="-1">
-      <div class="main-narrow" id="view"></div>
+      <div class="main-narrow" id="view">
+        <!-- Conteúdo estático: é o que robôs e navegadores sem JavaScript veem.
+             O aplicativo substitui este bloco ao carregar. -->
+        <section class="static-intro" aria-labelledby="intro-title">
+          <p class="static-kicker">Job Intelligence · saas.inovassie.com.br</p>
+          <h1 id="intro-title">H2DREAM</h1>
+          <p class="static-lead">H2DREAM é o aplicativo de candidatura a vagas de trabalho sazonal nos Estados Unidos, nos programas de visto H-2A (agricultura) e H-2B (hotelaria, construção, paisagismo, processamento de alimentos e outras ocupações). Ele lê o feed público do Departamento do Trabalho dos EUA, compara cada vaga com o seu perfil e envia a candidatura por e-mail, a partir da sua própria conta Gmail, com a sua autorização.</p>
+          <p>O H2DREAM faz parte da plataforma <strong>Job Intelligence</strong>, hospedada neste domínio, que também cobre descoberta, análise ATS e priorização de vagas na <strong>Gupy</strong>, no <strong>Indeed</strong> e no <strong>Seasonal Jobs</strong>.</p>
+          <p class="static-actions">
+            <a class="static-btn" href="/h2b/">Abrir o H2DREAM</a>
+            <a class="static-link" href="/privacidade">Política de Privacidade</a>
+            <a class="static-link" href="/termos">Termos de Serviço</a>
+          </p>
+          <noscript><p class="static-note">Este aplicativo precisa de JavaScript para funcionar. Ative o JavaScript no navegador para entrar no H2DREAM.</p></noscript>
+        </section>
+      </div>
     </main>
   </div>
+
+  <footer class="site-foot" id="site-foot">
+    <div class="site-foot-inner">
+      <p><strong>H2DREAM</strong> é o nome do aplicativo de candidatura automática a vagas H-2A e H-2B hospedado em saas.inovassie.com.br e mantido por Inovassie Acessoria, dentro da plataforma Job Intelligence (Gupy, Indeed e Seasonal Jobs).</p>
+      <nav aria-label="Links institucionais">
+        <a href="/h2b/">Abrir o H2DREAM</a>
+        <a href="/privacidade">Política de Privacidade</a>
+        <a href="/termos">Termos de Serviço</a>
+      </nav>
+    </div>
+  </footer>
 
   <div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
   <div id="modal-root"></div>
