@@ -46,6 +46,17 @@ const driverProfileService = require('./driverProfileService');
  */
 const ABSOLUTE_DAILY_CAP = 300;
 
+/**
+ * Teto do dia = 300 por conta Gmail ativa (decisão do operador, 2026-09-14).
+ * Sem conta cadastrada vale o teto de uma conta — a antiga conta única.
+ * O limite de 500/24h do Google continua sendo o freio de cada conta.
+ */
+function absoluteDailyCap() {
+  let active = 0;
+  try { active = require('./gmailSenderService').activeSenders().length; } catch (e) { active = 0; }
+  return ABSOLUTE_DAILY_CAP * Math.max(1, active);
+}
+
 const QUEUE_STATUS = {
   QUEUED: 'QUEUED', SENDING: 'SENDING', SENT: 'SENT',
   FAILED: 'FAILED', DEFERRED: 'DEFERRED', SKIPPED: 'SKIPPED',
@@ -97,15 +108,16 @@ function nextResetAt(tz = getTimezone()) {
 }
 
 function configuredLimit() {
+  const cap = absoluteDailyCap();
   const cfg = db.prepare('SELECT daily_email_limit FROM seasonal_config ORDER BY id LIMIT 1').get();
-  const fromSettings = parseInt(getSetting('max_seasonal_emails_per_day', String(ABSOLUTE_DAILY_CAP)), 10);
-  const fromConfig = cfg ? parseInt(cfg.daily_email_limit, 10) : ABSOLUTE_DAILY_CAP;
-  const chosen = Math.min(
-    Number.isFinite(fromSettings) ? fromSettings : ABSOLUTE_DAILY_CAP,
-    Number.isFinite(fromConfig) ? fromConfig : ABSOLUTE_DAILY_CAP
-  );
-  // Nenhuma configuração pode elevar o teto acima de 50 (spec §32).
-  return Math.max(0, Math.min(ABSOLUTE_DAILY_CAP, chosen));
+  const fromConfig = cfg ? parseInt(cfg.daily_email_limit, 10) : 0;
+  const fromSettings = parseInt(getSetting('max_seasonal_emails_per_day', '0'), 10);
+  // 0 (ou vazio) em qualquer um dos dois = automático: acompanha o teto
+  // (300 × contas ativas). Um valor positivo só pode REDUZIR.
+  const chosen = [fromConfig, fromSettings].filter(n => Number.isFinite(n) && n > 0);
+  if (!chosen.length) return cap;
+  // Nenhuma configuração eleva o limite acima do teto.
+  return Math.max(0, Math.min(cap, ...chosen));
 }
 
 function ensureQuotaRow(dateStr = todayKey()) {
@@ -127,7 +139,9 @@ function getQuotaStatus() {
     maxLimit: row.max_limit,
     remaining: Math.max(0, row.max_limit - row.count_sent),
     reset: nextResetAt(),
-    absoluteCap: ABSOLUTE_DAILY_CAP
+    absoluteCap: absoluteDailyCap(),
+    perAccountCap: ABSOLUTE_DAILY_CAP,
+    automatic: configuredLimit() === absoluteDailyCap()
   };
 }
 
@@ -717,6 +731,24 @@ async function processQueue({ max = 10, packageId = null } = {}) {
       continue;
     }
 
+    // 2b. Um e-mail por destinatário a cada N dias. Agentes e recrutadores
+    // aparecem em dezenas de ordens; mandar dezenas de e-mails para a mesma
+    // caixa é o caminho mais curto para a marcação de spam.
+    const cooldownDays = Number(cfg.recipient_cooldown_days);
+    if (cooldownDays > 0) {
+      const recent = db.prepare(`SELECT sent_at, job_order_id FROM seasonal_applications
+        WHERE lower(recipient_email) = lower(?) AND sent_at >= datetime('now', ?)
+        ORDER BY sent_at DESC LIMIT 1`).get(item.recipient_email, `-${cooldownDays} days`);
+      if (recent) {
+        db.prepare('UPDATE seasonal_email_queue SET status = ?, last_error = ? WHERE id = ?')
+          .run(QUEUE_STATUS.SKIPPED, `Destinatário já recebeu candidatura em ${String(recent.sent_at).slice(0, 10)} (ordem #${recent.job_order_id}); intervalo de ${cooldownDays} dias.`, item.id);
+        recordEvent(item.id, item.job_id, 'SKIPPED_RECIPIENT_COOLDOWN', `Mesmo destinatário já contatado em ${String(recent.sent_at).slice(0, 10)}.`);
+        result.skipped++;
+        result.details.push({ jobOrderId: item.job_order_id, outcome: 'SKIPPED', reason: 'recipient_cooldown', recipient: item.recipient_email });
+        continue;
+      }
+    }
+
     // 3. Revalidação dos anexos (spec §38 do build prompt: revalidar antes de enviar).
     const attachments = safeParse(item.attachments_json, []);
     const missing = attachments.find(a => !a.path || !fs.existsSync(a.path));
@@ -939,7 +971,7 @@ function safeParse(s, f) { try { return JSON.parse(s || ''); } catch (e) { retur
 
 module.exports = {
   isDrivingJob,
-  ABSOLUTE_DAILY_CAP, QUEUE_STATUS, RETRY_BACKOFF_MINUTES,
+  ABSOLUTE_DAILY_CAP, absoluteDailyCap, QUEUE_STATUS, RETRY_BACKOFF_MINUTES,
   todayKey, getTimezone, nextResetAt, configuredLimit,
   getQuotaStatus, reserveQuotaSlot, releaseQuotaSlot, ensureQuotaRow,
   buildCoverLetter, validatePackage, reviewDecision,

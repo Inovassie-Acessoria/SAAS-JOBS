@@ -210,6 +210,7 @@ const API = {
     readNotifications: (id) => request('/api/seasonal/notifications/read', { method: 'POST', body: { id: id || null } }),
     clearNotifications: () => request('/api/seasonal/notifications', { method: 'DELETE' }),
     stats: () => request('/api/seasonal/stats'),
+    dolSync: (body) => request('/api/seasonal/dol/sync-status', { method: 'POST', body: body || {} }),
     manualActions: () => request('/api/seasonal/manual-actions'),
     resolveManualAction: (id, status) =>
       request(`/api/seasonal/manual-actions/${id}/resolve`, { method: 'POST', body: { status } })

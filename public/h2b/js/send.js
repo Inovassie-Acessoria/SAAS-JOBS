@@ -154,7 +154,7 @@ H2B.send = (function () {
     as.states = String(cfg.preferred_states || '').split(',').map(s => s.trim()).filter(Boolean);
     as.titles = String(cfg.preferred_occupations || '').split(',').map(s => s.trim()).filter(Boolean);
     as.minWage = cfg.min_hourly_wage ? String(cfg.min_hourly_wage) : '';
-    as.limit = Number(cfg.daily_email_limit) || 100;
+    as.limit = Number(cfg.daily_email_limit) || 0;   // 0 = automático (teto)
     as.review = cfg.email_review_mode === 'ALWAYS_REVIEW' ? 'REVIEW_FLAGGED' : (cfg.email_review_mode || 'FULLY_AUTOMATIC');
     const f = Number(cfg.auto_queue_fit_threshold);
     as.rigor = f >= 85 ? 'best' : f >= 70 ? 'good' : 'all';
@@ -241,10 +241,10 @@ H2B.send = (function () {
         <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-secondary" data-next="3"><i class="ti ti-arrow-left"></i></button><button class="btn btn-primary" style="flex:1" data-next="5">Continuar <i class="ti ti-arrow-right"></i></button></div>` : ''}
       </div>
       <div class="wizard-step ${lock(5)}">
-        ${stepHdr(5, 'Ritmo e limite', `${as.limit}/dia · a cada ${as.pace} min · ${rigor.label}`, false, cur(5))}
+        ${stepHdr(5, 'Ritmo e limite', `${as.limit ? as.limit + '/dia' : 'automático (' + (state.quota ? state.quota.absoluteCap : 300) + '/dia)'} · a cada ${as.pace} min · ${rigor.label}`, false, cur(5))}
         ${cur(5) ? `
-        <div class="field"><label>Limite por dia: <b id="aw-limit-lbl">${as.limit}</b> e-mails <span class="hint">(teto do sistema: ${state.quota ? state.quota.absoluteCap : 300})</span></label>
-          <input type="range" id="aw-limit" min="10" max="${state.quota ? state.quota.absoluteCap : 300}" step="10" value="${as.limit}" style="width:100%"></div>
+        <div class="field"><label>Limite por dia: <b id="aw-limit-lbl">${as.limit ? as.limit : 'automático (' + (state.quota ? state.quota.absoluteCap : 300) + ')'}</b> <span class="hint">teto ${state.quota ? state.quota.absoluteCap : 300} = 300 × contas Gmail ativas · arraste até o fim para "automático"</span></label>
+          <input type="range" id="aw-limit" min="10" max="${state.quota ? state.quota.absoluteCap : 300}" step="10" value="${as.limit || (state.quota ? state.quota.absoluteCap : 300)}" style="width:100%"></div>
         <div class="field"><label>Ritmo da fila</label><div class="cat-chips-row">${[15, 30, 60, 120].map(p => `<button class="cat-chip-sel ${as.pace === p ? 'sel' : ''}" data-pace="${p}">a cada ${p} min</button>`).join('')}</div></div>
         <div class="field"><label>Rigor do encaixe</label><div class="cat-chips-row">${Object.entries(RIGOR).map(([k, r]) => `<button class="cat-chip-sel ${as.rigor === k ? 'sel' : ''}" data-rigor="${k}">${r.label}</button>`).join('')}</div><div class="hint" id="aw-rigor-hint">${rigor.hint}</div></div>
         <div class="field"><label>Revisão</label><div class="cat-chips-row">
@@ -279,12 +279,12 @@ H2B.send = (function () {
       if (ev.target.closest('#aw-start')) { collect(); openPreflight(); return; }
     };
     const tq = $('#aw-title-q'); if (tq) tq.oninput = () => { const q = tq.value.toLowerCase(); $$('#aw-titles [data-title]').forEach(b => { b.style.display = b.dataset.title.toLowerCase().includes(q) ? '' : 'none'; }); };
-    const lim = $('#aw-limit'); if (lim) { lim.oninput = () => { as.limit = Number(lim.value); $('#aw-limit-lbl').textContent = as.limit; }; lim.onchange = persistWizard; }
+    const lim = $('#aw-limit'); if (lim) { lim.oninput = () => { const cap = state.quota ? state.quota.absoluteCap : 300; as.limit = Number(lim.value) >= cap ? 0 : Number(lim.value); $('#aw-limit-lbl').textContent = as.limit ? as.limit : 'automático (' + cap + ')'; }; lim.onchange = persistWizard; }
     const wg = $('#aw-wage'); if (wg) wg.onchange = () => { as.minWage = wg.value.trim(); persistWizard(); };
   }
   function collect() {
     const w = $('#aw-wage'); if (w) as.minWage = w.value.trim();
-    const lim = $('#aw-limit'); if (lim) as.limit = Number(lim.value);
+    const lim = $('#aw-limit'); if (lim) { const cap = state.quota ? state.quota.absoluteCap : 300; as.limit = Number(lim.value) >= cap ? 0 : Number(lim.value); }
     persistWizard();
   }
   function persistWizard() {
@@ -326,7 +326,7 @@ H2B.send = (function () {
       const feedOk = Boolean(cfgR.config.dol_feed_url) && cfgR.config.health_status !== 'ERROR';
       checks.push({ ok: feedOk, block: true, label: 'Feed do DOL configurado', detail: feedOk ? `saúde: ${cfgR.config.health_status}` : 'Configure a URL do feed em Configurações', fix: 'settings' });
       const q = state.quota || {};
-      checks.push({ ok: true, block: false, label: 'Cota do dia', detail: `${q.countSent || 0} enviados · limite escolhido ${as.limit}/dia · teto ${q.absoluteCap || 300}` });
+      checks.push({ ok: true, block: false, label: 'Cota do dia', detail: `${q.countSent || 0} enviados · limite ${as.limit ? as.limit + '/dia' : 'automático'} · teto ${q.absoluteCap || 300} (300 × ${active.length || 1} conta(s))` });
     } catch (e) { err(e); }
     const allBlockOk = checks.filter(c => c.block).every(c => c.ok);
     $('#pf-body').innerHTML = checks.map(c => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)"><span style="font-size:18px;flex:none">${c.ok ? '✅' : c.block ? '❌' : '⚠️'}</span><div style="flex:1"><div style="font-weight:800;font-size:13.5px">${esc(c.label)}</div><div class="hint">${esc(c.detail)}</div></div>${!c.ok && c.fix ? `<button class="btn btn-secondary btn-xs" data-fix="${c.fix}">Resolver</button>` : ''}</div>`).join('')

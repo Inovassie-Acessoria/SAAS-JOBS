@@ -45,7 +45,7 @@ const REVIEW_MODES = ['ALWAYS_REVIEW', 'REVIEW_FLAGGED', 'FULLY_AUTOMATIC'];
  * no topo criaria dependência circular.
  */
 function emailCap() {
-  return require('./seasonalEmailService').ABSOLUTE_DAILY_CAP;
+  return require('./seasonalEmailService').absoluteDailyCap();
 }
 
 function updateConfig(data) {
@@ -75,6 +75,7 @@ function updateConfig(data) {
       auto_queue_fit_threshold = ?, auto_queue_ats_threshold = ?, auto_queue_opportunity_threshold = ?,
       target_hiring_year = ?, daily_email_limit = ?, dol_feed_url = ?,
       onboarding_step = ?, onboarding_done = ?, require_truck_driver_match = ?,
+      recipient_cooldown_days = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?`).run(
     b('h2a_preference'), b('h2b_preference'),
@@ -92,13 +93,19 @@ function updateConfig(data) {
     parseInt(v('auto_queue_ats_threshold', 75), 10),
     parseInt(v('auto_queue_opportunity_threshold', 85), 10),
     parseInt(v('target_hiring_year', 2027), 10),
-    Math.min(emailCap(), parseInt(v('daily_email_limit', emailCap()), 10) || emailCap()),
+    // 0 = automático (acompanha 300 × contas ativas); qualquer valor é limitado
+    // ao teto. Campo vazio/não numérico não é uma escolha: mantém o atual.
+    (!Number.isFinite(parseInt(data.daily_email_limit, 10)) ? (parseInt(cur.daily_email_limit, 10) || 0)
+      : Math.max(0, Math.min(emailCap(), parseInt(data.daily_email_limit, 10)))),
     String(v('dol_feed_url', '')),
     parseInt(v('onboarding_step', 0), 10), v('onboarding_done', 0) ? 1 : 0,
     // Foco: 1 = só motorista de caminhão, 0 = todas as vagas (padrão).
     data.require_truck_driver_match === undefined
       ? (Number(cur.require_truck_driver_match) === 1 ? 1 : 0)
       : ([1, '1', true].includes(data.require_truck_driver_match) ? 1 : 0),
+    !Number.isFinite(parseInt(data.recipient_cooldown_days, 10))
+      ? (Number.isFinite(Number(cur.recipient_cooldown_days)) ? Number(cur.recipient_cooldown_days) : 30)
+      : Math.max(0, Math.min(365, parseInt(data.recipient_cooldown_days, 10))),
     cur.id
   );
 
@@ -199,9 +206,38 @@ async function importJobs(options = {}, userId) {
     throw e;
   }
 
+  // Fonte: 'feed' (ZIP oficial, 20 dias), 'index' (todas as ativas do site)
+  // ou 'all' (padrão): feed primeiro, índice completa. O índice não é API
+  // documentada — se falhar, a importação do feed segue e o aviso fica nas métricas.
+  const source = String(options.source || 'all');
   let payload;
+  let indexWarning = null;
   try {
-    payload = await adapter.fetchJobs(options);
+    payload = source === 'index'
+      ? { jobs: [], rejected: [], source: 'index', fixtureMode: adapter.fixtureMode, feeds: [] }
+      : await adapter.fetchJobs(options);
+    if ((source === 'all' || source === 'index') && !adapter.fixtureMode) {
+      try {
+        const idx = await require('./adapters/dolIndexClient').fetchActive();
+        const seen = new Map(payload.jobs.map(j => [j.job_order_id, j]));
+        let merged = 0, added = 0;
+        for (const j of idx.jobs) {
+          const cur = seen.get(j.job_order_id);
+          if (cur) {
+            // A mesma vaga nas duas fontes: o feed é a base, o índice traz o estado.
+            Object.assign(cur, { dol_active: j.dol_active, dol_status: j.dol_status, dol_accepted_at: j.dol_accepted_at,
+                                 dol_active_until: j.dol_active_until, dol_published: 1, dol_url: cur.dol_url || j.dol_url });
+            if (!cur.application_email && j.application_email) { cur.application_email = j.application_email; cur.application_method = 'EMAIL'; }
+            merged++;
+          } else { payload.jobs.push(j); seen.set(j.job_order_id, j); added++; }
+        }
+        payload.feeds = (payload.feeds || []).concat([{ feed: 'index', label: 'Índice do seasonaljobs.dol.gov (ativas)', received: idx.jobs.length, merged, added }]);
+        payload.indexActive = idx.total;
+      } catch (e) {
+        indexWarning = `Índice do DOL indisponível agora (${e.message}); importado só o feed.`;
+        logSeasonal('index_unavailable', indexWarning, null, 'warn');
+      }
+    }
   } catch (err) {
     db.prepare(`UPDATE seasonal_config SET health_status = ?, last_failure_at = CURRENT_TIMESTAMP,
                 last_error = ?, updated_at = CURRENT_TIMESTAMP`).run(err.health || 'ERROR', err.userMessage || err.message);
@@ -286,7 +322,9 @@ async function importJobs(options = {}, userId) {
   // Enfileiramento automático conforme o modo (spec §29, §30)
   const queued = maybeAutoQueue(userId);
 
+  if (indexWarning) metrics.warnings.push(indexWarning);
   return Object.assign({}, metrics, {
+    indexActive: payload.indexActive || null,
     fixtureMode: payload.fixtureMode,
     rejected: payload.rejected.length,
     durationMs: Date.now() - started,
@@ -301,9 +339,10 @@ function upsertJob(j, hash) {
      wage_unit, start_date, end_date, openings, weekly_hours, housing_provided, transportation_provided,
      duties_description, special_requirements, application_method, application_email, application_url,
      content_hash, raw_json,
-     first_seen_feed, last_seen_feed, feed_appearances, feed_key, dol_url, dol_published)
+     first_seen_feed, last_seen_feed, feed_appearances, feed_key, dol_url, dol_published,
+     dol_active, dol_status, dol_accepted_at, dol_active_until, dol_checked_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,1,?,?,?)
+            ?,?,1,?,?,?,?,?,?,?,?)
     ON CONFLICT(job_order_id) DO UPDATE SET
       wage_rate = excluded.wage_rate, openings = excluded.openings,
       start_date = excluded.start_date, end_date = excluded.end_date,
@@ -322,7 +361,13 @@ function upsertJob(j, hash) {
       feed_key = COALESCE(seasonal_jobs.feed_key, excluded.feed_key),
       -- O link é fixo; a publicação só avança (aceite não volta atrás).
       dol_url = COALESCE(excluded.dol_url, seasonal_jobs.dol_url),
-      dol_published = MAX(COALESCE(seasonal_jobs.dol_published, 0), COALESCE(excluded.dol_published, 0))`)
+      dol_published = MAX(COALESCE(seasonal_jobs.dol_published, 0), COALESCE(excluded.dol_published, 0)),
+      -- Estado do DOL: o valor mais novo vence; o feed (que não sabe) não apaga o que o índice disse.
+      dol_active = COALESCE(excluded.dol_active, seasonal_jobs.dol_active),
+      dol_status = COALESCE(excluded.dol_status, seasonal_jobs.dol_status),
+      dol_accepted_at = COALESCE(excluded.dol_accepted_at, seasonal_jobs.dol_accepted_at),
+      dol_active_until = COALESCE(excluded.dol_active_until, seasonal_jobs.dol_active_until),
+      dol_checked_at = COALESCE(excluded.dol_checked_at, seasonal_jobs.dol_checked_at)`)
     .run(j.job_order_id, j.visa_type, j.job_title, j.normalized_title, j.soc_code, j.employer_name,
          j.employer_city, j.employer_state, j.employer_phone, j.employer_email, j.attorney_name,
          j.attorney_email, j.wage_rate, j.wage_unit, j.start_date, j.end_date, j.openings,
@@ -330,7 +375,9 @@ function upsertJob(j, hash) {
          j.special_requirements, j.application_method, j.application_email, j.application_url,
          hash, j.raw_json,
          j.feed_date || null, j.feed_date || null, j.feed_key || null,
-         j.dol_url || null, j.dol_published ? 1 : 0);
+         j.dol_url || null, j.dol_published ? 1 : 0,
+         j.dol_active === undefined ? null : j.dol_active, j.dol_status || null, j.dol_accepted_at || null,
+         j.dol_active_until || null, j.dol_active !== undefined && j.dol_active !== null ? new Date().toISOString() : null);
 }
 
 /**
@@ -389,7 +436,8 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
                     // --- filtros mestres do front H2B (F2.1) ---
                     q = null, states = null, city = null, titles = null,
                     minWage = null, minOpenings = null, startMonths = null,
-                    emailOnly = false, excludeApplied = false, housing = null, sort = null } = {}) {
+                    emailOnly = false, excludeApplied = false, housing = null, sort = null,
+                    dolActive = null } = {}) {
   const where = [];
   const params = [];
 
@@ -420,6 +468,8 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
   if (emailOnly) where.push("j.application_method = 'EMAIL' AND j.application_email IS NOT NULL AND j.application_email <> ''");
   if (excludeApplied) where.push('ap.id IS NULL');
   if (housing === true || housing === 'true' || housing === '1') where.push('j.housing_provided = 1');
+  if (dolActive === '1' || dolActive === 1 || dolActive === true) where.push('j.dol_active = 1');
+  else if (dolActive === '0' || dolActive === 0) where.push('j.dol_active = 0');
 
   // --- Safra e janela de publicação (F4.3) ---
   if (season) {
@@ -521,6 +571,8 @@ function facets() {
            SUM(CASE WHEN j.visa_type = 'H-2A' THEN 1 ELSE 0 END) AS h2a,
            SUM(CASE WHEN j.visa_type = 'H-2B' THEN 1 ELSE 0 END) AS h2b,
            SUM(CASE WHEN j.application_method = 'EMAIL' AND j.application_email <> '' THEN 1 ELSE 0 END) AS withEmail,
+           SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS dolActive,
+           SUM(CASE WHEN j.dol_active = 0 THEN 1 ELSE 0 END) AS dolInactive,
            MAX(j.last_seen_feed) AS lastFeed
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
@@ -626,6 +678,7 @@ function rankedCandidates(limit = 100) {
   const rows = db.prepare(`
     SELECT j.id, j.job_order_id, j.job_title, j.employer_name, j.employer_state, j.wage_rate,
            j.visa_type, j.employer_city, j.openings, j.housing_provided, j.normalized_title,
+           j.start_date, j.dol_active, j.dol_status, j.dol_accepted_at,
            j.application_method, j.application_email, j.timeline_class, j.timeline_priority,
            j.timeline_weight, j.timeline_label, j.timeline_explanation, j.timeline_period,
            m.fit_score, m.ats_score, m.opportunity_score
@@ -635,6 +688,16 @@ function rankedCandidates(limit = 100) {
     LEFT JOIN seasonal_applications ap ON j.id = ap.seasonal_job_id
     WHERE d.id IS NULL AND ap.id IS NULL
       AND j.application_method = 'EMAIL' AND j.application_email IS NOT NULL
+      -- Retirada ou negada pelo DOL nunca entra na fila.
+      AND (j.dol_status IS NULL OR (j.dol_status NOT LIKE '%Withdrawn%' AND j.dol_status NOT LIKE '%Denied%' AND j.dol_status NOT LIKE '%Rejected%'))
+    ORDER BY
+      -- 1º ativas no DOL que ainda não começaram; 2º sem estado conhecido;
+      -- 3º ativas já iniciadas; por último as inativas.
+      CASE WHEN j.dol_active = 1 AND (j.start_date IS NULL OR j.start_date >= date('now')) THEN 0
+           WHEN j.dol_active IS NULL THEN 1
+           WHEN j.dol_active = 1 THEN 2
+           ELSE 3 END,
+      j.dol_accepted_at DESC, j.start_date ASC
     LIMIT ?
   `).all(Number(limit));
 
@@ -643,6 +706,7 @@ function rankedCandidates(limit = 100) {
     employer: r.employer_name, state: r.employer_state, wage: r.wage_rate,
     visaType: r.visa_type, city: r.employer_city, openings: r.openings,
     housing: Boolean(r.housing_provided), normalizedTitle: r.normalized_title,
+    dolActive: r.dol_active, dolStatus: r.dol_status, startDate: r.start_date,
     fitScore: r.fit_score, atsScore: r.ats_score, opportunityScore: r.opportunity_score,
     completeness: r.application_email ? 100 : 0,
     freshness: 60,
@@ -652,7 +716,21 @@ function rankedCandidates(limit = 100) {
     } : null
   }));
 
-  return timelineEngine.rankQueue(items, weights);
+  const ranked = timelineEngine.rankQueue(items, weights);
+
+  // Camada final: o estado no DOL manda. Ativa e ainda por começar vai na
+  // frente; sem estado conhecido depois; ativa já iniciada em seguida; inativa
+  // por último. Dentro de cada faixa vale a prioridade calculada.
+  const today = new Date().toISOString().slice(0, 10);
+  const tier = (i) => {
+    if (i.dolActive === 1 && (!i.startDate || i.startDate >= today)) return 0;
+    if (i.dolActive === null || i.dolActive === undefined) return 1;
+    if (i.dolActive === 1) return 2;
+    return 3;
+  };
+  return ranked
+    .map((i, idx) => Object.assign(i, { dolTier: tier(i), _idx: idx }))
+    .sort((a, b) => a.dolTier - b.dolTier || a._idx - b._idx);
 }
 
 /**
@@ -796,6 +874,39 @@ function dashboard(userId) {
   };
 }
 
+/**
+ * Atualiza o estado no DOL (ativa / inativa / status / aceite) de todas as
+ * vagas com link — inclusive as que só o feed trouxe. Em lotes de 60 casos,
+ * a base inteira cabe em poucas dezenas de requisições.
+ */
+async function syncDolStatus({ maxAgeHours = 20, limit = 20000 } = {}) {
+  const index = require('./adapters/dolIndexClient');
+  const rows = db.prepare(`SELECT id, job_order_id, dol_url FROM seasonal_jobs
+    WHERE dol_url IS NOT NULL
+      AND (dol_checked_at IS NULL OR dol_checked_at < datetime('now', ?))
+    LIMIT ?`).all(`-${Number(maxAgeHours)} hours`, Number(limit));
+  if (!rows.length) return { checked: 0, active: 0, inactive: 0, unpublished: 0 };
+
+  const publicOf = (r) => String(r.dol_url).split('/jobs/')[1];
+  const found = await index.lookupCases(rows.map(publicOf));
+  const now = new Date().toISOString();
+  const upd = db.prepare(`UPDATE seasonal_jobs SET dol_active = ?, dol_status = ?, dol_accepted_at = COALESCE(?, dol_accepted_at),
+    dol_active_until = ?, dol_published = ?, dol_checked_at = ? WHERE id = ?`);
+  const out = { checked: rows.length, active: 0, inactive: 0, unpublished: 0 };
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const f = found[publicOf(r).toUpperCase()];
+      if (!f) { upd.run(null, null, null, null, 0, now, r.id); out.unpublished++; continue; }
+      upd.run(f.active, f.status, f.acceptedAt, f.activeUntil, 1, now, r.id);
+      if (f.active) out.active++; else out.inactive++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  logSeasonal('dol_status_synced', `Estado no DOL atualizado: ${out.active} ativas, ${out.inactive} inativas, ${out.unpublished} ainda sem página.`, out);
+  return out;
+}
+
 function logs(limit = 100) {
   return db.prepare('SELECT * FROM seasonal_logs ORDER BY id DESC LIMIT ?').all(Number(limit));
 }
@@ -817,7 +928,7 @@ module.exports = {
   COUNTRY, PLATFORM, AUTOMATION_MODES, REVIEW_MODES,
   getConfig, updateConfig, candidateProfile, buildAdapter,
   testConnection, importJobs,
-  listJobs, getJob, saveJob, discardJob, facets, suggest,
+  listJobs, getJob, saveJob, discardJob, facets, suggest, syncDolStatus,
   rankedCandidates, maybeAutoQueue,
   dashboard, logs, searchHistory, resolveAts, store,
   seasons, seasonLabel

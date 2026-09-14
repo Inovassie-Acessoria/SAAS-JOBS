@@ -662,6 +662,7 @@ app.get('/api/seasonal/jobs', requireUser, wrap((req, res) => res.json({
     emailOnly: req.query.emailOnly === 'true' || req.query.emailOnly === '1',
     excludeApplied: req.query.excludeApplied === 'true' || req.query.excludeApplied === '1',
     housing: req.query.housing || null,
+    dolActive: req.query.dolActive !== undefined ? req.query.dolActive : null,
     sort: req.query.sort || null,
     season: req.query.season || null,
     stillPublished: req.query.stillPublished === 'true' || req.query.stillPublished === '1',
@@ -704,8 +705,16 @@ app.post('/api/seasonal/jobs/:id/save', wrap((req, res) =>
 app.post('/api/seasonal/jobs/:id/discard', wrap((req, res) =>
   res.json(seasonal.discardJob(Number(req.params.id), String(req.body.reason || '')))));
 
-app.post('/api/seasonal/import', wrap(async (req, res) =>
-  res.json({ metrics: await seasonal.importJobs(req.body || {}, req.user.id) })));
+app.post('/api/seasonal/import', wrap(async (req, res) => {
+  const metrics = await seasonal.importJobs(req.body || {}, req.user.id);
+  // O estado no DOL entra logo depois, para a tela já mostrar ativas/inativas.
+  let dolStatus = null;
+  if (req.body && req.body.skipStatus) dolStatus = { skipped: true };
+  else { try { dolStatus = await seasonal.syncDolStatus(); } catch (e) { dolStatus = { error: e.message }; } }
+  res.json({ metrics: Object.assign({}, metrics, { dolStatus }) });
+}));
+app.post('/api/seasonal/dol/sync-status', requireUser, wrap(async (req, res) =>
+  res.json(await seasonal.syncDolStatus({ maxAgeHours: Number(req.body && req.body.maxAgeHours) || 0 }))));
 
 app.get('/api/seasonal/searches', requireUser, wrap((req, res) => res.json({ searches: seasonal.searchHistory() })));
 app.get('/api/seasonal/logs', requireUser, wrap((req, res) =>

@@ -19,7 +19,7 @@ H2B.jobs = (function () {
   const js = {
     sheet: 'all',
     q: '',
-    quick: { emailOnly: false, excludeApplied: false, housing: false },
+    quick: { emailOnly: false, excludeApplied: false, housing: false, dolActive: false },
     sort: 'priority',
     filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all' },
     jobs: [],
@@ -53,6 +53,7 @@ H2B.jobs = (function () {
     if (js.quick.emailOnly) p.emailOnly = 1;
     if (js.quick.excludeApplied && js.sheet !== 'applied') p.excludeApplied = 1;
     if (js.quick.housing) p.housing = 1;
+    if (js.quick.dolActive) p.dolActive = 1;
     if (js.filters.states.length) p.states = js.filters.states.join(',');
     if (js.filters.city) p.city = js.filters.city;
     if (js.filters.titles.length) p.titles = js.filters.titles.join(',');
@@ -93,7 +94,7 @@ H2B.jobs = (function () {
       $('#cnt-rec').textContent = t.recommended || 0;
       $('#cnt-saved').textContent = t.saved || 0;
       $('#cnt-applied').textContent = t.applied || 0;
-      $('#jlist-feed').textContent = t.lastFeed ? `feed ${H2B.fmtUSDate(t.lastFeed)}` : 'sem feed';
+      $('#jlist-feed').textContent = (t.lastFeed ? `feed ${H2B.fmtUSDate(t.lastFeed)}` : 'sem feed') + (t.dolActive ? ` · ${t.dolActive} ativas no DOL` : '');
     } catch (e) { /* silencioso */ }
   }
 
@@ -110,6 +111,21 @@ H2B.jobs = (function () {
     const cls = j.timeline.timelineClass === 'TARGET_2027' ? 'tp' : j.timeline.timelineClass === 'CURRENT' ? 'tg' : '';
     return `<span class="tag ${cls}">${esc(j.timeline.label)}</span>`;
   }
+  /** Estado do caso no DOL: ativa (recrutamento aberto), inativa, retirada, ou desconhecido. */
+  function dolTag(j) {
+    if (j.dol_active === 1) {
+      const started = j.start_date && j.start_date < new Date().toISOString().slice(0, 10);
+      return started ? '<span class="tag ta" title="Ativa no DOL, mas o contrato já começou">🟡 ativa · já começou</span>' : '<span class="tag tg" title="Recrutamento aberto no DOL">🟢 ativa no DOL</span>';
+    }
+    if (j.dol_active === 0) {
+      const st = String(j.dol_status || '');
+      if (/Withdrawn|Denied|Rejected/i.test(st)) return '<span class="tag tr" title="' + esc(st) + '">⛔ retirada</span>';
+      if (/Certification/i.test(st)) return '<span class="tag" title="' + esc(st) + '">🔒 certificada · recrutamento fechado</span>';
+      return '<span class="tag" title="' + esc(st) + '">⚪ inativa · ' + esc(st.split(' - ')[0].slice(0, 28)) + '</span>';
+    }
+    return '';
+  }
+
   function card(j) {
     const cat = j.categoryLabel || j.career_track || (j.soc_code ? `SOC ${j.soc_code}` : '');
     const applied = j.is_applied ? ' applied' : '';
@@ -125,6 +141,7 @@ H2B.jobs = (function () {
         ${j.start_date ? `<span class="tag">📅 ${fmtUSDate(j.start_date)}</span>` : ''}
         ${j.housing_provided ? '<span class="tag tb">🏠 moradia</span>' : ''}
         ${j.isEmailEligible ? '<span class="tag tp">✉️ e-mail</span>' : '<span class="tag ta">📞 manual</span>'}
+        ${dolTag(j)}
         ${j.dol_url && j.dol_published ? `<a class="tag" href="${esc(j.dol_url)}" target="_blank" rel="noopener" data-dol title="Abrir no site do DOL">DOL ↗</a>` : ''}
         ${scoreTag(j)}${timelineTag(j)}
       </div>
@@ -155,7 +172,7 @@ H2B.jobs = (function () {
     const badge = $('#filter-badge'); badge.textContent = n; badge.style.display = n ? 'inline-block' : 'none';
     $('#active-filters').innerHTML = chips.map(c => `<button class="filter-chip-x" data-fk="${c.k}" data-fv="${esc(c.v || '')}">${esc(c.l)} <b>×</b></button>`).join('')
       + (chips.length > 1 ? `<button class="filter-chip-x" data-fk="all" style="background:var(--sf3);border-color:var(--border2);color:var(--t2)">limpar tudo</button>` : '');
-    $$('#f-email, #f-notapplied, #f-housing').forEach(b => b.classList.toggle('on', Boolean(js.quick[b.dataset.f])));
+    $$('#f-email, #f-notapplied, #f-housing, #f-dolactive').forEach(b => b.classList.toggle('on', Boolean(js.quick[b.dataset.f])));
   }
   function removeFilter(k, v) {
     const f = js.filters;
@@ -211,6 +228,7 @@ H2B.jobs = (function () {
         <div class="info-box"><div class="info-lbl">Moradia / transporte</div><div class="info-val">${j.housing_provided ? '🏠 sim' : '—'} ${j.transportation_provided ? '🚌 sim' : ''}</div></div>
         <div class="info-box"><div class="info-lbl">Como se candidatar</div><div class="info-val">${esc(j.application_method || 'UNKNOWN')}</div></div>
         <div class="info-box"><div class="info-lbl">Código SOC</div><div class="info-val">${esc(j.soc_code || '—')}</div></div>
+        <div class="info-box"><div class="info-lbl">Estado no DOL</div><div class="info-val">${dolTag(j) || '<span class="hint">não verificado</span>'}${j.dol_active_until ? `<div class="hint">ativa até ${fmtUSDate(j.dol_active_until)}</div>` : ''}${j.dol_accepted_at ? `<div class="hint">aceita em ${fmtUSDate(j.dol_accepted_at)}</div>` : ''}</div></div>
         <div class="info-box"><div class="info-lbl">Visto no feed</div><div class="info-val">${j.first_seen_feed ? H2B.fmtUSDate(j.first_seen_feed) : '—'}${j.feed_appearances ? ` · ${j.feed_appearances}×` : ''}</div></div>
       </div>
       ${contact.length ? `<div class="jd-section-title">Contato</div><div class="info-grid">${contact.join('')}</div>` : ''}
@@ -365,7 +383,7 @@ H2B.jobs = (function () {
       if (it.dataset.job) { select(it.dataset.job); $('#jobs-sug').classList.remove('open'); return; }
       q.value = it.dataset.q; js.q = it.dataset.q; $('#jobs-sug').classList.remove('open'); load(true);
     };
-    $$('#f-email, #f-notapplied, #f-housing').forEach(b => b.onclick = () => { js.quick[b.dataset.f] = !js.quick[b.dataset.f]; persist(); load(true); });
+    $$('#f-email, #f-notapplied, #f-housing, #f-dolactive').forEach(b => b.onclick = () => { js.quick[b.dataset.f] = !js.quick[b.dataset.f]; persist(); load(true); });
     $('#f-sort').onchange = (ev) => { js.sort = ev.target.value; persist(); load(true); };
     $('#btn-filters').onclick = openFilters;
     $('#mf-apply').onclick = applyFilters;

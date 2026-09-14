@@ -57,11 +57,16 @@ const TASKS = {
         return { status: 'SKIPPED', message: 'A URL do feed do DOL não está configurada. Nada foi importado.' };
       }
 
-      const metrics = await seasonal.importJobs({ auto: true }, userId);
+      const metrics = await seasonal.importJobs({ auto: true, source: 'all' }, userId);
+      // Depois de importar, o estado no DOL de TODA a base (ativa/inativa/
+      // retirada) é atualizado — é o que ordena a fila do automático.
+      let status = null;
+      try { status = await seasonal.syncDolStatus(); } catch (e) { status = { error: e.message }; }
       return {
         status: 'OK',
-        message: `${metrics.received} ordem(ns) recebida(s), ${metrics.newJobs} nova(s), ${metrics.analyzed} analisada(s).`,
-        metrics
+        message: `${metrics.received} ordem(ns) recebida(s), ${metrics.newJobs} nova(s), ${metrics.analyzed} analisada(s)` +
+                 (status && !status.error ? `; DOL: ${status.active} ativas, ${status.inactive} inativas.` : '.'),
+        metrics: Object.assign({}, metrics, { dolStatus: status })
       };
     }
   },
@@ -123,7 +128,12 @@ const TASKS = {
     description: 'Processa a fila respeitando cota, pausa, prioridade 2027 e backoff.',
     async handler() {
       const emailService = require('./seasonalEmailService');
-      const r = await emailService.processQueue({ max: 10 });
+      // Lote por ciclo dimensionado para o teto do dia caber nos ciclos do
+      // dia: 900/dia a cada 30 min = 19 por ciclo (mínimo 10).
+      const row = db.prepare("SELECT interval_minutes FROM core_scheduler_jobs WHERE id = 'seasonal_dispatch'").get();
+      const interval = Math.max(5, Number(row && row.interval_minutes) || 60);
+      const perTick = Math.max(10, Math.ceil(emailService.configuredLimit() / Math.max(1, Math.floor(1440 / interval))));
+      const r = await emailService.processQueue({ max: perTick });
 
       if (r.reason === 'PAUSED' || r.reason === 'GLOBAL_PAUSE') {
         return { status: 'SKIPPED', message: r.userMessage, metrics: r };

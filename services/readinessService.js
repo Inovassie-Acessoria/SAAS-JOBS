@@ -269,7 +269,7 @@ function checkSending() {
     id: 'quota', capability: CAPABILITY.SENDING, title: 'Cota diária de envios',
     status: quota.maxLimit > 0 ? STATUS.OK : STATUS.DEGRADED,
     severity: SEVERITY.INFO,
-    observed: `${quota.countSent}/${quota.maxLimit} hoje (teto absoluto ${emailService.ABSOLUTE_DAILY_CAP}), fuso ${quota.timezone}`,
+    observed: `${quota.countSent}/${quota.maxLimit} hoje (teto ${emailService.absoluteDailyCap()} = ${emailService.ABSOLUTE_DAILY_CAP} × contas ativas), fuso ${quota.timezone}`,
     impact: 'A reserva é atômica: sob concorrência, o e-mail 51 não sai. Nenhuma configuração eleva o teto acima de 50.',
     fix: quota.maxLimit > 0 ? null : 'O limite diário está em zero — ajuste em Configurações do Seasonal.'
   }));

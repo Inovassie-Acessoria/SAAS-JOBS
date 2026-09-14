@@ -571,6 +571,25 @@ function migrateDolLinks() {
   } catch (e) { return { error: e.message }; }
 }
 
+/**
+ * Limite diário "automático" (2026-09-14): o operador pediu 300 e-mails por
+ * conta Gmail cadastrada. O teto global passou a ser 300 × contas ativas, e
+ * daily_email_limit = 0 significa "acompanhar o teto". Uma única vez, quem
+ * ainda tinha o antigo 300 fixo passa para automático.
+ */
+function migrateDailyLimitAuto() {
+  const KEY = 'daily_limit_auto_v1';
+  try {
+    if (db.prepare('SELECT value FROM core_system_settings WHERE key = ?').get(KEY)) return { migrated: false };
+    const r = db.prepare('UPDATE seasonal_config SET daily_email_limit = 0 WHERE daily_email_limit = 300').run();
+    db.prepare("UPDATE core_system_settings SET value = '0', updated_at = CURRENT_TIMESTAMP WHERE key = 'max_seasonal_emails_per_day' AND value = '300'").run();
+    db.prepare(`INSERT INTO core_system_settings (key, value, description) VALUES (?, '1', ?)
+                ON CONFLICT(key) DO UPDATE SET value = '1'`)
+      .run(KEY, 'Migração única: limite diário passou a acompanhar 300 × contas Gmail ativas.');
+    return { migrated: r.changes > 0 };
+  } catch (e) { return { migrated: false, error: e.message }; }
+}
+
 function migrateDailyEmailCap() {
   const report = { config: false, setting: false };
 
@@ -1589,7 +1608,7 @@ function createSchema() {
 function seedDefaults() {
   const settings = [
     ['application_timezone', 'America/Sao_Paulo', 'general', 'Fuso horário usado para a virada da cota diária'],
-    ['max_seasonal_emails_per_day', '300', 'safety', 'Trava absoluta de e-mails de candidatura por dia'],
+    ['max_seasonal_emails_per_day', '0', 'safety', 'Trava absoluta de e-mails de candidatura por dia (0 = automático: 300 × contas Gmail ativas)'],
     ['global_pause_all_automations', '0', 'safety', 'Pausa geral de todas as automações'],
     ['ai_provider', 'none', 'ai', 'Provedor de IA configurado (none = heurística determinística)'],
     ['ai_api_key_ref', '', 'ai', 'Referência à variável de ambiente com a chave (nunca a chave em si)'],
@@ -1762,6 +1781,16 @@ function initDatabase() {
   // Link público no site do DOL e se a página já existe (F4.7).
   addColumnIfMissing('seasonal_jobs', 'dol_url', 'TEXT');
   addColumnIfMissing('seasonal_jobs', 'dol_published', 'INTEGER DEFAULT 0');
+  // Estado do caso no índice do DOL: ativa (recrutamento aberto), status
+  // textual, data do aceite, até quando fica ativa, última verificação.
+  addColumnIfMissing('seasonal_jobs', 'dol_active', 'INTEGER');
+  addColumnIfMissing('seasonal_jobs', 'dol_status', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'dol_accepted_at', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'dol_active_until', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'dol_checked_at', 'TEXT');
+  // Um e-mail por destinatário a cada N dias (0 = desligado).
+  addColumnIfMissing('seasonal_config', 'recipient_cooldown_days', 'INTEGER DEFAULT 30');
+  result.dailyLimitAuto = migrateDailyLimitAuto();
   result.dolLinks = migrateDolLinks();
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_seasonal_feed_window

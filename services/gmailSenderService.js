@@ -46,7 +46,7 @@ const secretBox = require('../core/security/secretBox');
  * produto continua mandando (2 contas → 100 cada = 200, não 300). Nos dois
  * casos fica bem abaixo dos 500/dia que o Gmail corta.
  */
-const DEFAULT_PER_SENDER_LIMIT = 100;
+const DEFAULT_PER_SENDER_LIMIT = 300;
 
 /**
  * O Gmail gratuito corta em 500 mensagens por 24h por conta. Nenhuma
