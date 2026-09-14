@@ -260,7 +260,13 @@ function run(rawJobs, ctx) {
   // (§73). Mas se ele descartaria TUDO, o resultado seria uma tela vazia sem
   // explicação. Nesse caso ele é desligado neste lote e o usuário é avisado de
   // que o perfil parece pertencer a outro domínio.
-  const prefilterResults = survivors.map(s => ({ s, pre: semanticPrefilter(s.job, ctx.profile) }));
+  // `ctx.prefilter === false` desliga o pré-filtro de propósito: quando a
+  // análise é determinística (sem LLM) ela custa milissegundos por vaga, e
+  // pular vagas por "falta de sobreposição de conceitos" só esconde
+  // oportunidades de quem quer concorrer a tudo (foco amplo do Seasonal).
+  const prefilterResults = survivors.map(s => ({
+    s, pre: ctx.prefilter === false ? { passed: true, reason: 'Pré-filtro desligado.' } : semanticPrefilter(s.job, ctx.profile)
+  }));
   const passing = prefilterResults.filter(r => r.pre.passed);
   const bypassPrefilter = survivors.length > 0 && passing.length === 0;
 

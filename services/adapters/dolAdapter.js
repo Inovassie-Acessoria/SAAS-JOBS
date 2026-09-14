@@ -180,62 +180,140 @@ function parseCsv(lines) {
 // Normalização (§19 — mapeamento documentado em docs/integrations/seasonal)
 // ---------------------------------------------------------------------------
 
+/**
+ * Nomes REAIS dos campos, verificados no feed publicado em 2026-09-14:
+ *
+ *   h2b (9142B)  caseNumber, tempneedJobtitle, tempneedSoc, tempneedWkrPos,
+ *                tempneedStart/End ("01-Dec-2026"), empBusinessName, jobCity,
+ *                jobState, jobDuties, jobMinspecialreq, jobMinexpmonths,
+ *                wageFrom, wagePer, recIsLodging, recIsDailyTransport,
+ *                recApplyEmail/Phone/Url, emppocEmail, attyEmail
+ *   jo (790/790A) caseNumber, jobTitle, jobWrksNeededH2a, jobBeginDate/EndDate,
+ *                jobDuties, jobAddReqinfo, jobIsLifting, jobLiftingWeight,
+ *                jobIsDriver, jobWageOffer, jobWagePer, housing*, transportDesc*,
+ *                recApplyEmail/Phone/Url, emppocEmail, socCode
+ *
+ * O feed é camelCase. A versão anterior deste normalizador esperava snake_case
+ * (case_number, employer_name…) e rejeitava TODOS os registros reais como
+ * "sem job_order_id" — a importação terminava com zero vagas sem dizer por quê.
+ * Os nomes antigos continuam aceitos (fixtures, testes, CSV manual).
+ */
 function normalizeDolRecord(r, feedKey = 'jo') {
   const pick = (...keys) => {
     for (const k of keys) {
       const v = r[k] !== undefined ? r[k] : r[k.toUpperCase()] !== undefined ? r[k.toUpperCase()] : undefined;
-      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      if (v === undefined || v === null) continue;
+      const t = String(v).trim();
+      if (t === '' || /^(n\/?a|none|null|-)$/i.test(t)) continue;
+      return v;
     }
     return null;
   };
+  const email = (...keys) => {
+    const v = pick(...keys);
+    if (!v) return null;
+    const m = String(v).match(/[^\s<>,;"']+@[^\s<>,;"']+\.[a-z]{2,}/i);
+    return m ? m[0].toLowerCase() : null;
+  };
+  const yes = (v) => v === 1 || v === true || /^(1|true|y|yes|sim|x)$/i.test(String(v == null ? '' : v).trim());
 
-  const employerEmail = pick('employer_email', 'apply_email', 'contact_email', 'email',
-                             'EMPLOYER_EMAIL', 'APPLY_EMAIL');
-  const attorneyEmail = pick('attorney_email', 'agent_email', 'representative_email',
-                             'ATTORNEY_EMAIL', 'AGENT_ATTORNEY_EMAIL');
-  const applyUrl = pick('apply_url', 'application_url', 'website', 'url', 'EMPLOYER_WEBSITE');
-  const phone = pick('employer_phone', 'contact_phone', 'phone', 'EMPLOYER_PHONE');
+  // --- contatos: candidatura explícita > ponto de contato do empregador > agente
+  const applyEmail = email('recApplyEmail', 'apply_email', 'APPLY_EMAIL');
+  const employerEmail = email('emppocEmail', 'emppocAddEmail', 'employer_email', 'contact_email', 'email', 'EMPLOYER_EMAIL');
+  const attorneyEmail = email('attyEmail', 'attorney_email', 'agent_email', 'representative_email', 'ATTORNEY_EMAIL', 'AGENT_ATTORNEY_EMAIL');
+  const applyUrlRaw = pick('recApplyUrl', 'apply_url', 'application_url', 'website', 'url', 'EMPLOYER_WEBSITE');
+  const applyUrl = applyUrlRaw && /^https?:\/\/|^www\./i.test(String(applyUrlRaw)) ? String(applyUrlRaw).trim() : null;
+  const phone = pick('recApplyPhone', 'emppocPhone', 'empPhone', 'employer_phone', 'contact_phone', 'phone', 'EMPLOYER_PHONE');
 
-  // Detecção do método de candidatura (§26 do spec de produto).
   let method = 'UNKNOWN';
-  if (employerEmail || attorneyEmail) method = 'EMAIL';
+  if (applyEmail || employerEmail || attorneyEmail) method = 'EMAIL';
   else if (applyUrl) method = 'WEBSITE';
   else if (phone) method = 'PHONE';
 
+  // --- visto: pelo feed de origem, com o número do caso como confirmação
+  const caseNumber = String(pick('caseNumber', 'clearanceOrderNumber', 'job_order_id', 'case_number', 'eta_case_number', 'CASE_NUMBER', 'id') || '').trim();
   const visaRaw = String(pick('visa_type', 'visa_class', 'program', 'VISA_CLASS') || '').toUpperCase();
-  const visa = feedKey === 'h2b' || visaRaw.includes('H-2B') || visaRaw.includes('H2B') ? VISA_H2B : VISA_H2A;
+  const visa = feedKey === 'h2b' || visaRaw.includes('H-2B') || visaRaw.includes('H2B') || /^H-400/.test(caseNumber)
+    ? VISA_H2B : VISA_H2A;
 
-  const title = pick('job_title', 'title', 'occupation_title', 'JOB_TITLE') || 'Sem título';
+  const title = pick('tempneedJobtitle', 'jobTitle', 'job_title', 'title', 'occupation_title', 'JOB_TITLE')
+    || pick('tempneedSocTitle', 'socTitle', 'jobSocTitle') || 'Sem título';
+
+  // --- requisitos estruturados viram texto: é o que o classificador lê
+  const reqLines = [];
+  const expMonths = parseInt(pick('jobMinexpmonths') || '0', 10);
+  if (expMonths > 0) reqLines.push(`${expMonths} months of experience required.`);
+  const trainMonths = parseInt(pick('jobMintrainingmonths') || '0', 10);
+  if (trainMonths > 0) reqLines.push(`${trainMonths} months of training required.`);
+  const edu = pick('jobMinedu');
+  if (edu) reqLines.push(`Minimum education: ${edu}.`);
+  if (yes(r.jobIsLifting)) reqLines.push(`Must be able to lift ${pick('jobLiftingWeight') || '50'} lb.`);
+  if (yes(r.jobIsDriver)) reqLines.push("Valid driver's license required.");
+  if (yes(r.jobIsBackground)) reqLines.push('Background check required.');
+  if (yes(r.jobIsDrugScreen)) reqLines.push('Drug screening required.');
+  if (yes(r.jobIsCert)) reqLines.push('Certification required.');
+  const freeReq = pick('jobMinspecialreq', 'jobAddReqinfo', 'special_requirements', 'job_requirements', 'requirements', 'SPECIAL_REQUIREMENTS');
+  if (freeReq) reqLines.push(String(freeReq));
+  const specialRequirements = reqLines.length ? reqLines.join('\n') : null;
+
+  // --- moradia: H-2A (790) sempre traz endereço de alojamento; H-2B usa recIsLodging
+  const housing = yes(r.recIsLodging) || yes(r.jobHousingTransport)
+    || Boolean(pick('housingAddr1') || pick('housingType'))
+    || yes(pick('housing_provided', 'housing', 'employer_provided_housing', 'HOUSING_PROVIDED'));
+  const transport = yes(r.recIsDailyTransport) || yes(r.isDailyTransport)
+    || /provide/i.test(String(pick('transportDescDaily') || ''))
+    || yes(pick('transportation_provided', 'transportation'));
+
+  const attyName = [pick('attyFirstname'), pick('attyLastname')].filter(Boolean).join(' ')
+    || pick('attyBizname', 'attorney_name', 'agent_name', 'ATTORNEY_NAME');
 
   return {
-    job_order_id: String(pick('job_order_id', 'case_number', 'eta_case_number', 'CASE_NUMBER', 'id') || ''),
+    job_order_id: caseNumber,
     visa_type: visa,
     job_title: title,
     normalized_title: title,
-    soc_code: pick('soc_code', 'occupation_code', 'SOC_CODE'),
-    employer_name: pick('employer_name', 'employer', 'company', 'EMPLOYER_NAME') || 'Empregador não informado',
-    employer_city: pick('employer_city', 'worksite_city', 'city', 'WORKSITE_CITY'),
-    employer_state: pick('employer_state', 'worksite_state', 'state', 'WORKSITE_STATE'),
+    soc_code: pick('tempneedSoc', 'socCode', 'jobSoc', 'soc_code', 'occupation_code', 'SOC_CODE'),
+    employer_name: pick('empBusinessName', 'empTradeName', 'employer_name', 'employer', 'company', 'EMPLOYER_NAME') || 'Empregador não informado',
+    employer_city: pick('jobCity', 'empCity', 'employer_city', 'worksite_city', 'city', 'WORKSITE_CITY'),
+    employer_state: pick('jobState', 'empState', 'employer_state', 'worksite_state', 'state', 'WORKSITE_STATE'),
     employer_phone: phone,
     employer_email: employerEmail,
-    attorney_name: pick('attorney_name', 'agent_name', 'ATTORNEY_NAME'),
+    attorney_name: attyName || null,
     attorney_email: attorneyEmail,
-    wage_rate: numberOrNull(pick('wage_rate', 'wage_offer', 'hourly_wage', 'basic_rate_from', 'WAGE_OFFER')),
-    wage_unit: pick('wage_unit', 'pay_unit', 'WAGE_UNIT_OF_PAY') || 'Hour',
-    start_date: pick('begin_date', 'start_date', 'employment_begin_date', 'EMPLOYMENT_BEGIN_DATE'),
-    end_date: pick('end_date', 'employment_end_date', 'EMPLOYMENT_END_DATE'),
-    openings: parseInt(pick('openings', 'total_workers', 'workers_needed', 'TOTAL_WORKERS') || '1', 10) || 1,
-    weekly_hours: parseInt(pick('hours_per_week', 'weekly_hours', 'BASIC_NUMBER_OF_HOURS') || '0', 10) || null,
-    housing_provided: truthy(pick('housing_provided', 'housing', 'employer_provided_housing', 'HOUSING_PROVIDED')) ? 1 : 0,
-    transportation_provided: truthy(pick('transportation_provided', 'transportation')) ? 1 : 0,
-    duties_description: pick('job_duties', 'duties_description', 'description', 'JOB_DUTIES'),
-    special_requirements: pick('special_requirements', 'job_requirements', 'requirements', 'SPECIAL_REQUIREMENTS'),
+    wage_rate: numberOrNull(pick('wageFrom', 'jobWageOffer', 'wage_rate', 'wage_offer', 'hourly_wage', 'basic_rate_from', 'WAGE_OFFER')),
+    wage_unit: pick('wagePer', 'jobWagePer', 'wage_unit', 'pay_unit', 'WAGE_UNIT_OF_PAY') || 'Hour',
+    start_date: toIsoDate(pick('tempneedStart', 'jobBeginDate', 'begin_date', 'start_date', 'employment_begin_date', 'EMPLOYMENT_BEGIN_DATE')),
+    end_date: toIsoDate(pick('tempneedEnd', 'jobEndDate', 'end_date', 'employment_end_date', 'EMPLOYMENT_END_DATE')),
+    openings: parseInt(pick('tempneedWkrPos', 'jobWrksNeededH2a', 'jobWrksNeeded', 'openings', 'total_workers', 'workers_needed', 'TOTAL_WORKERS') || '1', 10) || 1,
+    weekly_hours: parseInt(pick('jobHoursTotal', 'hours_per_week', 'weekly_hours', 'BASIC_NUMBER_OF_HOURS') || '0', 10) || null,
+    housing_provided: housing ? 1 : 0,
+    transportation_provided: transport ? 1 : 0,
+    duties_description: pick('jobDuties', 'job_duties', 'duties_description', 'description', 'JOB_DUTIES'),
+    special_requirements: specialRequirements,
     application_method: method,
-    application_email: employerEmail || attorneyEmail || null,
+    application_email: applyEmail || employerEmail || attorneyEmail || null,
     application_url: applyUrl,
     provider_feed: feedKey,
     raw_json: JSON.stringify(r).slice(0, 20000)
   };
+}
+
+/**
+ * Datas do feed chegam como "01-Dec-2026" (H-2B), "12-Nov-2026" (H-2A) ou ISO.
+ * O banco e os filtros (mês de início, "ainda no período") esperam AAAA-MM-DD.
+ */
+const MONTHS_EN = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+function toIsoDate(v) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})-([A-Za-z]{3})[A-Za-z]*-(\d{4})$/);
+  if (m && MONTHS_EN[m[2].toLowerCase()]) return `${m[3]}-${MONTHS_EN[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
 }
 
 function numberOrNull(v) {
@@ -438,9 +516,11 @@ class DolAdapter {
       return { jobs: normalized, rejected, source: 'fixture', fixtureMode: true, feeds: [] };
     }
 
+    // Padrão: ordens H-2A (790/790A) + pedidos H-2B (9142B). O 9142A não traz
+    // título, funções nem salário — só repetiria o que o 790 já entrega.
     const wanted = Array.isArray(options.feeds) && options.feeds.length
       ? options.feeds.filter(f => FEEDS[f])
-      : ['jo'];
+      : ['jo', 'h2b'];
 
     const all = [];
     const rejected = [];
@@ -509,6 +589,6 @@ class DolAdapter {
 
 module.exports = {
   DolAdapter, FEEDS, DEFAULT_BASE_URL,
-  normalizeDolRecord, isSafeEntryName, safeExtract, pickDataEntry, parseDataFile, parseCsv, feedDate,
+  normalizeDolRecord, toIsoDate, isSafeEntryName, safeExtract, pickDataEntry, parseDataFile, parseCsv, feedDate,
   VISA_H2A, VISA_H2B
 };

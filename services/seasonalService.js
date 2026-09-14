@@ -235,6 +235,11 @@ async function importJobs(options = {}, userId) {
     atsComponents: atsInfo.components, atsStatus: atsInfo.status, atsAnalysis: atsInfo.analysis,
     queueWeights,
     force: Boolean(options.force),
+    // Sem LLM a análise é barata: pontua TODAS as ordens, em vez de deixar
+    // metade sem score (e portanto fora do automático) por falta de
+    // sobreposição com as habilidades digitadas. Com LLM ligado, o pré-filtro
+    // volta a valer para conter custo.
+    prefilter: require('./aiService').status().llmAvailable,
 
     timelineFor: (job) => timelineEngine.classifyTimeline(job, targetYear),
 

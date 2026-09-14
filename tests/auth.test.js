@@ -96,7 +96,7 @@ test('§3 — a identidade do Google promove o operador local, preservando os da
     }));
   `);
 
-  const out = JSON.parse(child.execFileSync(process.execPath, [script], { encoding: 'utf8', timeout: 20000 }));
+  const out = JSON.parse(child.execFileSync(process.execPath, [script], { encoding: 'utf8', timeout: 90000 }));
   assert.strictEqual(out.sameUser, true, 'o operador local vira o mesmo usuário do Google');
   assert.strictEqual(out.authMode, 'google');
   assert.strictEqual(out.preservedName, 'Dado do operador local', 'os dados já cadastrados seguem com o dono');

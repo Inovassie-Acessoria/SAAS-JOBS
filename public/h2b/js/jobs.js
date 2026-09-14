@@ -93,7 +93,7 @@ H2B.jobs = (function () {
       $('#cnt-rec').textContent = t.recommended || 0;
       $('#cnt-saved').textContent = t.saved || 0;
       $('#cnt-applied').textContent = t.applied || 0;
-      $('#jlist-feed').textContent = t.lastFeed ? `feed ${H2B.fmtDate(t.lastFeed)}` : 'sem feed';
+      $('#jlist-feed').textContent = t.lastFeed ? `feed ${H2B.fmtUSDate(t.lastFeed)}` : 'sem feed';
     } catch (e) { /* silencioso */ }
   }
 
@@ -208,7 +208,7 @@ H2B.jobs = (function () {
         <div class="info-box"><div class="info-lbl">Moradia / transporte</div><div class="info-val">${j.housing_provided ? '🏠 sim' : '—'} ${j.transportation_provided ? '🚌 sim' : ''}</div></div>
         <div class="info-box"><div class="info-lbl">Como se candidatar</div><div class="info-val">${esc(j.application_method || 'UNKNOWN')}</div></div>
         <div class="info-box"><div class="info-lbl">Código SOC</div><div class="info-val">${esc(j.soc_code || '—')}</div></div>
-        <div class="info-box"><div class="info-lbl">Visto no feed</div><div class="info-val">${j.first_seen_feed ? H2B.fmtDate(j.first_seen_feed) : '—'}${j.feed_appearances ? ` · ${j.feed_appearances}×` : ''}</div></div>
+        <div class="info-box"><div class="info-lbl">Visto no feed</div><div class="info-val">${j.first_seen_feed ? H2B.fmtUSDate(j.first_seen_feed) : '—'}${j.feed_appearances ? ` · ${j.feed_appearances}×` : ''}</div></div>
       </div>
       ${contact.length ? `<div class="jd-section-title">Contato</div><div class="info-grid">${contact.join('')}</div>` : ''}
       ${warnings.length ? `<div class="jd-section-title">Atenção</div>${warnings.map(w => `<div class="alert al-amber" style="margin-bottom:6px"><i class="ti ti-alert-triangle"></i><div>${esc(w)}</div></div>`).join('')}` : ''}
