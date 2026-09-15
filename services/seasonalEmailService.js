@@ -200,6 +200,11 @@ function isDrivingJob(job = {}) {
   return /\b(driver|driving|truck|cdl|chauffeur|hauler|hauling)\b/i.test(text);
 }
 
+/** Vaga da base de divulgação do DOL: empregador de temporada passada. */
+function isRecurringEmployer(job) {
+  return Boolean(job && job.origin === 'disclosure');
+}
+
 function buildCoverLetter({ job, profile, resume, driverProfile = {} }) {
   const lines = [];
   const name = profile.fullName || 'Candidate';
@@ -208,7 +213,17 @@ function buildCoverLetter({ job, profile, resume, driverProfile = {} }) {
 
   lines.push(`Dear Hiring Team at ${job.employer_name},`);
   lines.push('');
-  lines.push(`I am applying for the ${job.job_title} position under DOL job order #${job.job_order_id}.`);
+  if (isRecurringEmployer(job)) {
+    // Base de divulgação: a vaga encerrou na temporada passada. O e-mail é
+    // interesse na PRÓXIMA temporada, e diz isso — nunca finge que a ordem
+    // antiga ainda está aberta.
+    const season = String(job.start_date || '').slice(0, 4);
+    const where = [job.employer_city, job.employer_state].filter(Boolean).join(', ');
+    lines.push(`I understand that ${job.employer_name} hired ${job.job_title} workers through the ${job.visa_type || 'H-2B'} program${season ? ` for the ${season} season` : ''}${where ? ` in ${where}` : ''} (DOL case #${job.job_order_id}).`);
+    lines.push('I would like to apply for a position on your team for the upcoming season.');
+  } else {
+    lines.push(`I am applying for the ${job.job_title} position under DOL job order #${job.job_order_id}.`);
+  }
 
   // Experiência — só se houver anos declarados no perfil.
   // A experiência específica de caminhão (§27) tem precedência sobre a genérica:
@@ -532,7 +547,9 @@ function prepareApplicationPackage(jobId, options = {}) {
   const coverLetter = buildCoverLetter({ job, profile, resume, driverProfile });
   const composed = templates.compose({ job, profile, consume: options.consumeTemplates !== false });
   const subject = composed.subject
-    || `Application — ${job.job_title} — Job Order #${job.job_order_id} — ${profile.fullName || ''}`.trim();
+    || (isRecurringEmployer(job)
+      ? `Application for the upcoming ${job.visa_type || 'H-2B'} season — ${job.job_title} — ${profile.fullName || ''}`.trim()
+      : `Application — ${job.job_title} — Job Order #${job.job_order_id} — ${profile.fullName || ''}`.trim());
   const body = composed.body || coverLetter;
 
   const validation = validatePackage({
@@ -980,7 +997,7 @@ module.exports = {
   ABSOLUTE_DAILY_CAP, absoluteDailyCap, QUEUE_STATUS, RETRY_BACKOFF_MINUTES,
   todayKey, getTimezone, nextResetAt, configuredLimit,
   getQuotaStatus, reserveQuotaSlot, releaseQuotaSlot, ensureQuotaRow,
-  buildCoverLetter, validatePackage, reviewDecision,
+  buildCoverLetter, isRecurringEmployer, validatePackage, reviewDecision,
   prepareApplicationPackage, approvePackage,
   processQueue, setPause, getQueue, getSentApplications, getPackage,
   classifyError, detectCareerTrack

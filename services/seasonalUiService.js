@@ -13,7 +13,9 @@ const { db } = require('../config/database');
 
 const PREF_KEYS = new Set([
   'theme', 'screen_mode', 'onboarding_done', 'tour_done', 'avatar', 'display_name',
-  'last_view', 'jobs_sheet', 'filters', 'auto_wizard', 'news_seen_at', 'hist_reset_at', 'driver_card_open'
+  'last_view', 'jobs_sheet', 'filters', 'auto_wizard', 'news_seen_at', 'hist_reset_at', 'driver_card_open',
+  // lang: idioma das vagas no front ('en' original | 'pt' traduzido pelo Google Tradutor)
+  'lang'
 ]);
 
 function getPrefs() {

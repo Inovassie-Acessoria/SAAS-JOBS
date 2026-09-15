@@ -197,4 +197,23 @@ async function lookupCases(publicCases) {
   return found;
 }
 
-module.exports = { SEARCH_URL, STATE_CODES, stateCode, internalCaseNumber, normalizeIndexRecord, fetchActive, lookupCases };
+/**
+ * Registros completos de casos específicos (descrição, e-mail de candidatura,
+ * estado), em lotes — mapa número-público → registro normalizado. Serve para
+ * enriquecer a base de divulgação, que não traz a descrição das tarefas.
+ */
+async function fetchCases(publicCases, { onBatch = null } = {}) {
+  const found = {};
+  const list = [...new Set(publicCases.map(c => String(c || '').trim().toUpperCase()).filter(Boolean))];
+  for (let i = 0; i < list.length; i += LOOKUP_BATCH) {
+    const batch = list.slice(i, i + LOOKUP_BATCH);
+    const page = await post({
+      search: batch.map(c => `"${c}"`).join(' | '), searchFields: 'case_number', searchMode: 'any', top: batch.length
+    });
+    for (const v of page.value || []) found[String(v.case_number).toUpperCase()] = normalizeIndexRecord(v);
+    if (onBatch) onBatch({ done: Math.min(i + LOOKUP_BATCH, list.length), total: list.length, found: Object.keys(found).length });
+  }
+  return found;
+}
+
+module.exports = { SEARCH_URL, STATE_CODES, stateCode, internalCaseNumber, normalizeIndexRecord, fetchActive, lookupCases, fetchCases };

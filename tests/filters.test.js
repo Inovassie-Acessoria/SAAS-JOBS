@@ -64,13 +64,14 @@ test('filtro por ano de início', () => {
   assert.strictEqual(seasonal.listJobs({ years: 'abcd' }).length, 6, 'ano inválido é ignorado, não zera a lista');
 });
 
-test('"ativas primeiro": ativa e futura, depois sem verificação, depois ativa já iniciada, depois inativa', () => {
+test('"ativas primeiro": ativa e futura, depois sem verificação, depois ativa já iniciada, depois base de divulgação, depois inativa', () => {
   const rows = seasonal.listJobs({ sort: 'active' });
   const tier = Object.fromEntries(rows.map(r => [r.job_order_id, r.dol_tier]));
   assert.strictEqual(tier['A-HOUR-CA'], 0);
   assert.strictEqual(tier['E-UNKNOWN-FL'], 1);
   assert.strictEqual(tier['F-STARTED-FL'], 2);
-  assert.strictEqual(tier['D-WEEK-TX'], 3);
+  // A camada 3 é da base de divulgação (temporada passada); a retirada fica por último.
+  assert.strictEqual(tier['D-WEEK-TX'], 4);
   const tiers = rows.map(r => r.dol_tier);
   assert.deepStrictEqual(tiers, [...tiers].sort((a, b) => a - b), 'a lista precisa vir em camadas crescentes');
   // A prioridade padrão também põe quem recruta no DOL na frente.

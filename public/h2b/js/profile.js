@@ -260,8 +260,8 @@ H2B.profile = (function () {
     $('#ed-body').innerHTML = '<div class="skel" style="height:120px"></div>';
     try {
       const [t] = await Promise.all([API.seasonal.templates(), loadDocs()]);
-      ed.subjects = t.subjects.length ? t.subjects.map(x => ({ id: x.id, content: x.content, visa_type: x.visa_type, active: x.active })) : [{ content: '', visa_type: 'ANY', active: true }];
-      ed.bodies = t.bodies.length ? t.bodies.map(x => ({ id: x.id, content: x.content, visa_type: x.visa_type, active: x.active })) : [{ content: '', visa_type: 'ANY', active: true }];
+      ed.subjects = t.subjects.length ? t.subjects.map(x => ({ id: x.id, content: x.content, visa_type: x.visa_type, audience: x.audience || 'ANY', active: x.active })) : [{ content: '', visa_type: 'ANY', audience: 'ANY', active: true }];
+      ed.bodies = t.bodies.length ? t.bodies.map(x => ({ id: x.id, content: x.content, visa_type: x.visa_type, audience: x.audience || 'ANY', active: x.active })) : [{ content: '', visa_type: 'ANY', audience: 'ANY', active: true }];
       ed.vars = t.variables || [];
     } catch (e) { err(e); }
     renderEditor();
@@ -271,6 +271,7 @@ H2B.profile = (function () {
     return `<div class="prof-mini" data-row="${kind}:${i}" style="margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="prof-mini-lbl" style="margin:0">${kind === 'subject' ? 'Assunto' : 'Corpo'} ${i + 1}</span>
         <select class="fsel" data-tv="${kind}:${i}" style="height:26px;font-size:12px;margin-left:auto"><option value="ANY" ${it.visa_type === 'ANY' ? 'selected' : ''}>Ambos</option><option value="H-2A" ${it.visa_type === 'H-2A' ? 'selected' : ''}>H-2A</option><option value="H-2B" ${it.visa_type === 'H-2B' ? 'selected' : ''}>H-2B</option></select>
+        <select class="fsel" data-ta="${kind}:${i}" style="height:26px;font-size:12px" title="Para quais vagas este modelo serve"><option value="ANY" ${(it.audience || 'ANY') === 'ANY' ? 'selected' : ''}>Todas as vagas</option><option value="CURRENT" ${it.audience === 'CURRENT' ? 'selected' : ''}>Vagas atuais</option><option value="RECURRING" ${it.audience === 'RECURRING' ? 'selected' : ''}>📂 Base DOL (próx. temporada)</option></select>
         <button class="btn btn-secondary btn-xs" data-rm="${kind}:${i}" title="Remover"><i class="ti ti-x"></i></button></div>
       <${tag} class="input" data-tc="${kind}:${i}" ${kind === 'body' ? 'rows="6"' : ''} placeholder="${kind === 'subject' ? 'Application for {vaga} — {nome}' : 'Dear {empresa} hiring team,\n\nI am applying for the {vaga} position (job order {job_order})…'}">${kind === 'body' ? esc(it.content) : ''}</${tag}>
     </div>`;
@@ -301,9 +302,12 @@ H2B.profile = (function () {
     const body = $('#ed-body');
     body.addEventListener('focusin', (ev) => { if (ev.target.matches('[data-tc]')) focused = ev.target; });
     body.oninput = (ev) => { const t = ev.target.closest('[data-tc]'); if (t) { const [k, i] = t.dataset.tc.split(':'); (k === 'subject' ? ed.subjects : ed.bodies)[Number(i)].content = t.value; } };
-    body.onchange = (ev) => { const t = ev.target.closest('[data-tv]'); if (t) { const [k, i] = t.dataset.tv.split(':'); (k === 'subject' ? ed.subjects : ed.bodies)[Number(i)].visa_type = t.value; } };
+    body.onchange = (ev) => {
+      const t = ev.target.closest('[data-tv]'); if (t) { const [k, i] = t.dataset.tv.split(':'); (k === 'subject' ? ed.subjects : ed.bodies)[Number(i)].visa_type = t.value; }
+      const a = ev.target.closest('[data-ta]'); if (a) { const [k, i] = a.dataset.ta.split(':'); (k === 'subject' ? ed.subjects : ed.bodies)[Number(i)].audience = a.value; }
+    };
     body.onclick = (ev) => {
-      const add = ev.target.closest('[data-add]'); if (add) { (add.dataset.add === 'subject' ? ed.subjects : ed.bodies).push({ content: '', visa_type: 'ANY', active: true }); renderEditor(); return; }
+      const add = ev.target.closest('[data-add]'); if (add) { (add.dataset.add === 'subject' ? ed.subjects : ed.bodies).push({ content: '', visa_type: 'ANY', audience: 'ANY', active: true }); renderEditor(); return; }
       const rm = ev.target.closest('[data-rm]'); if (rm) { const [k, i] = rm.dataset.rm.split(':'); (k === 'subject' ? ed.subjects : ed.bodies).splice(Number(i), 1); renderEditor(); return; }
       const v = ev.target.closest('[data-var]'); if (v) { if (!focused) { toast('Clique primeiro no campo onde quer inserir'); return; } const ins = `{${v.dataset.var}}`; const s = focused.selectionStart || 0, e = focused.selectionEnd || 0; focused.value = focused.value.slice(0, s) + ins + focused.value.slice(e); focused.dispatchEvent(new Event('input', { bubbles: true })); focused.focus(); focused.selectionStart = focused.selectionEnd = s + ins.length; return; }
       if (ev.target.closest('#ed-up-cv')) { const f = $('#ed-file'); f.dataset.docType = 'resume'; f.value = ''; f.click(); return; }

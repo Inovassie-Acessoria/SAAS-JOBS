@@ -625,6 +625,76 @@ function migrateDolLinks() {
  * daily_email_limit = 0 significa "acompanhar o teto". Uma única vez, quem
  * ainda tinha o antigo 300 fixo passa para automático.
  */
+/**
+ * Base de divulgação do DOL (2026-09-14): vagas de temporadas passadas, de
+ * empregadores que contratam pelo programa todo ano, importadas de um JSON.
+ *
+ *   origin / origin_ref   de onde a vaga veio: 'dol' (feed/índice) ou
+ *                         'disclosure' (base de divulgação + arquivo de origem)
+ *   employer_key/title_key chaves canônicas para achar a mesma vaga com
+ *                         grafia diferente — é por elas que uma vaga da base
+ *                         some quando o mesmo empregador já tem o mesmo cargo
+ *                         nas vagas atuais
+ *   merged_cases_json     pedidos do DOL que foram dobrados neste card
+ *   dup_hidden            1 quando a vaga da base está oculta porque o mesmo
+ *                         empregador tem o mesmo cargo entre as vagas atuais;
+ *                         recalculado a cada importação (feed ou base)
+ *   templates.audience    modelo de e-mail para vagas atuais, para a base
+ *                         (candidatura à próxima temporada) ou para ambas
+ */
+function migrateDisclosureBase() {
+  const report = { keys: 0, seeded: false };
+  addColumnIfMissing('seasonal_jobs', 'origin', "TEXT DEFAULT 'dol'");
+  addColumnIfMissing('seasonal_jobs', 'origin_ref', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'employer_key', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'title_key', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'merged_cases_json', 'TEXT');
+  addColumnIfMissing('seasonal_jobs', 'dup_hidden', 'INTEGER DEFAULT 0');
+  addColumnIfMissing('seasonal_email_templates', 'audience', "TEXT DEFAULT 'ANY'");
+  try {
+    db.exec("UPDATE seasonal_jobs SET origin = 'dol' WHERE origin IS NULL;");
+    db.exec("UPDATE seasonal_email_templates SET audience = 'ANY' WHERE audience IS NULL;");
+    db.exec('CREATE INDEX IF NOT EXISTS idx_seasonal_dedup ON seasonal_jobs(employer_key, title_key, employer_state);');
+  } catch (e) { /* segue */ }
+  // Chaves das vagas que já existiam — calculadas em JS, uma vez.
+  try {
+    const keys = require('../core/jobs/dedupKeys');
+    const rows = db.prepare('SELECT id, employer_name, job_title FROM seasonal_jobs WHERE employer_key IS NULL OR title_key IS NULL').all();
+    if (rows.length) {
+      const up = db.prepare('UPDATE seasonal_jobs SET employer_key = ?, title_key = ? WHERE id = ?');
+      db.exec('BEGIN');
+      try {
+        for (const r of rows) up.run(keys.employerKey(r.employer_name), keys.titleKey(r.job_title), r.id);
+        db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+      report.keys = rows.length;
+    }
+  } catch (e) { report.error = e.message; }
+  // Modelo de e-mail para a base: uma vez, se ainda não houver nenhum.
+  const KEY = 'recurring_templates_v1';
+  try {
+    if (!db.prepare('SELECT value FROM core_system_settings WHERE key = ?').get(KEY)) {
+      const has = db.prepare("SELECT COUNT(*) c FROM seasonal_email_templates WHERE audience = 'RECURRING'").get().c;
+      if (!has) {
+        const ins = db.prepare(`INSERT INTO seasonal_email_templates (kind, visa_type, audience, content, active, sort_order) VALUES (?,?,?,?,1,?)`);
+        ins.run('subject', 'ANY', 'RECURRING', 'Application for the upcoming {visto} season — {vaga} — {nome}', 50);
+        ins.run('body', 'ANY', 'RECURRING',
+          'Dear Hiring Team at {empresa},\n\n' +
+          'I understand that {empresa} hired {vaga} workers through the {visto} program for the {ano_vaga} season in {cidade}, {estado} (DOL case #{job_order}). ' +
+          'I would like to apply for a position on your team for the upcoming season.\n\n' +
+          'I am available to start when your next season begins and can provide my resume, references and any documents you need for the visa process.\n\n' +
+          'Thank you for your time. I would be glad to answer any questions.\n\n' +
+          'Best regards,\n{nome}\n{email}\n{telefone}', 50);
+        report.seeded = true;
+      }
+      db.prepare(`INSERT INTO core_system_settings (key, value, description) VALUES (?, '1', ?)
+                  ON CONFLICT(key) DO UPDATE SET value = '1'`)
+        .run(KEY, 'Migração única: modelo de e-mail para empregadores da base de divulgação (temporada seguinte).');
+    }
+  } catch (e) { report.templatesError = e.message; }
+  return report;
+}
+
 function migrateDailyLimitAuto() {
   // v2: a v1 não zerava a trava do sistema (max_seasonal_emails_per_day); roda de novo, idempotente.
   const KEY = 'daily_limit_auto_v2';
@@ -1852,6 +1922,7 @@ function initDatabase() {
              WHERE job_title IS NULL;`);
   } catch (e) { /* preenchimento é conveniência */ }
   result.dailyLimitAuto = migrateDailyLimitAuto();
+  result.disclosureBase = migrateDisclosureBase();
   result.dolLinks = migrateDolLinks();
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_seasonal_feed_window

@@ -47,6 +47,7 @@ const awayReport = require('./services/awayReport');
 const ai = require('./services/aiService');
 const readiness = require('./services/readinessService');
 const backup = require('./services/backupService');
+const disclosureImport = require('./services/disclosureImportService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -665,6 +666,7 @@ app.get('/api/seasonal/jobs', requireUser, wrap((req, res) => res.json({
     housing: req.query.housing || null,
     dolActive: req.query.dolActive !== undefined ? req.query.dolActive : null,
     years: req.query.years || null,
+    origin: req.query.origin || null,
     sort: req.query.sort || null,
     season: req.query.season || null,
     stillPublished: req.query.stillPublished === 'true' || req.query.stillPublished === '1',
@@ -715,6 +717,37 @@ app.post('/api/seasonal/import', wrap(async (req, res) => {
   else { try { dolStatus = await seasonal.syncDolStatus(); } catch (e) { dolStatus = { error: e.message }; } }
   res.json({ metrics: Object.assign({}, metrics, { dolStatus }) });
 }));
+// Base de divulgação do DOL (JSON de vagas certificadas de temporadas passadas):
+// sobe o arquivo e importa em segundo plano; o front acompanha pelo status.
+const disclosureUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, file, cb) {
+      const dir = path.join(uploadsRoot, 'imports');
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename(req, file, cb) { cb(null, `disclosure_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.json`); }
+  }),
+  limits: { fileSize: 300 * 1024 * 1024, files: 1 },
+  fileFilter(req, file, cb) {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (ext !== '.json') return cb(new UserError(`Formato não aceito: ${ext || 'sem extensão'}. Envie o arquivo .json da base.`, 400));
+    cb(null, true);
+  }
+});
+app.post('/api/seasonal/import/disclosure', requireUser, disclosureUpload.single('file'), wrap(async (req, res) => {
+  if (!req.file) throw new UserError('Envie o arquivo JSON da base do DOL.', 400);
+  if (disclosureImport.status().running) { fs.unlink(req.file.path, () => {}); throw new UserError('Já existe uma importação da base em andamento.', 409); }
+  const enrich = !(req.body && (req.body.enrich === '0' || req.body.enrich === 'false'));
+  const file = req.file.path;
+  const original = req.file.originalname;
+  disclosureImport.run({ file, enrich, userId: req.user.id, sourceRef: original })
+    .catch(e => { try { logCore('seasonal', 'disclosure_import_failed', `Importação da base falhou: ${e.message}`, { file: original }, null, 'error'); } catch (x) { /* */ } })
+    .finally(() => fs.unlink(file, () => {}));
+  res.json({ started: true, file: original, enrich });
+}));
+app.get('/api/seasonal/import/disclosure/status', requireUser, wrap((req, res) => res.json(disclosureImport.status())));
+
 app.post('/api/seasonal/dol/sync-status', requireUser, wrap(async (req, res) =>
   res.json(await seasonal.syncDolStatus({ maxAgeHours: Number(req.body && req.body.maxAgeHours) || 0 }))));
 

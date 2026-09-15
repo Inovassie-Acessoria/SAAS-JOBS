@@ -136,3 +136,27 @@ html.force-pc .mob-detail{display:none!important}
   .mhdr{padding:12px 14px}
   .mbody{padding:10px 14px}
 }
+
+/* ── Tradução (Google Tradutor) ──
+   O widget do Google fica invisível — o botão do cabeçalho manda nele. O
+   widget empurra o body 40px para caber o banner dele; aqui o banner some e o
+   body volta ao lugar. */
+body{top:0!important}
+body>.skiptranslate,#goog-gt-tt,.goog-te-balloon-frame,.goog-te-spinner-pos{display:none!important}
+#google_translate_element{position:absolute!important;left:-9999px;top:0;width:1px;height:1px;overflow:hidden}
+.goog-text-highlight{background:none!important;box-shadow:none!important}
+font[style*="vertical-align"]{vertical-align:inherit!important}
+#lang-btn{width:auto;min-width:36px;padding:0 9px 0 7px;border-radius:18px;gap:4px}
+#lang-btn #lang-lbl{font-size:11px;font-weight:900;letter-spacing:.03em}
+#lang-btn.on{background:linear-gradient(135deg,#059669,#10b981)!important;color:#fff!important}
+.lang-menu{position:absolute;top:54px;right:12px;z-index:120;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 12px 40px rgba(30,27,75,.18);padding:8px;width:min(300px,calc(100vw - 24px))}
+.lang-menu-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);padding:4px 8px 8px;display:flex;align-items:center;gap:6px}
+.lang-opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;border:1px solid transparent;background:none;font-family:inherit;color:var(--t1);cursor:pointer}
+.lang-opt:hover{background:var(--sf2)}
+.lang-opt.on{background:var(--sf3);border-color:var(--border2)}
+.lang-opt.on .lang-opt-name::after{content:' ✓';color:var(--green)}
+.lang-opt-name{font-size:14px;font-weight:700}
+.lang-opt small{font-size:11px;color:var(--t3)}
+.lang-menu-foot{font-size:10.5px;color:var(--t4);padding:8px 8px 2px;line-height:1.4}
+.app-logo-text{white-space:nowrap}
+@media (max-width:420px){#lang-btn{padding:0 7px}#lang-btn #lang-lbl{display:none}}

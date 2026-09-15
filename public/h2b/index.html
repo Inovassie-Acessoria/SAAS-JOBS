@@ -26,7 +26,7 @@
   }catch(e){}})();
 </script>
 </head>
-<body>
+<body class="notranslate">
 
 <!-- ═══════════ SPLASH ═══════════ -->
 <div id="h2b-splash">
@@ -42,8 +42,9 @@
   <!-- ── HEADER ── -->
   <header class="app-hdr">
     <div class="app-logo-icon">🚀</div>
-    <div class="app-logo-text">H2 Dream</div>
+    <div class="app-logo-text notranslate">H2 Dream</div>
     <div class="hdr-right">
+      <button class="av-btn notranslate" id="lang-btn" title="Traduzir as vagas (Google Tradutor)" aria-label="Traduzir" aria-haspopup="menu" style="background:var(--sf3);color:var(--t2)"><i class="ti ti-language" style="font-size:18px"></i><span id="lang-lbl">EN</span></button>
       <button class="av-btn" id="theme-toggle-btn" title="Alternar tema" aria-label="Alternar tema" style="background:var(--sf3);color:var(--t2)"><i class="ti ti-moon" style="font-size:18px"></i></button>
       <button class="av-btn" id="hdr-notif-btn" title="Notificações" aria-label="Notificações" style="background:var(--sf3);color:var(--t2);position:relative">
         <i class="ti ti-bell" style="font-size:18px"></i>
@@ -51,6 +52,13 @@
       </button>
       <button id="hdr-menu-btn" aria-label="Abrir menu"><span style="font-size:12px;font-weight:800;color:#fff;letter-spacing:.04em">MENU</span><i class="ti ti-menu-2"></i></button>
       <div class="av-btn" id="hdr-av" title="Perfil" data-sv="profile">G</div>
+    </div>
+    <!-- Idioma das vagas: o widget do Google fica invisível; este menu manda nele. -->
+    <div id="lang-menu" class="lang-menu notranslate gone" role="menu" aria-label="Idioma das vagas">
+      <div class="lang-menu-title"><i class="ti ti-language"></i> Idioma das vagas</div>
+      <button class="lang-opt" data-lang="pt" role="menuitem"><span class="lang-opt-name">🇧🇷 Português (Brasil)</span><small>traduz título, descrição e requisitos</small></button>
+      <button class="lang-opt" data-lang="en" role="menuitem"><span class="lang-opt-name">🇺🇸 English</span><small>texto original do DOL</small></button>
+      <div class="lang-menu-foot">Tradução automática do Google Tradutor. O e-mail ao empregador sai sempre em inglês.</div>
     </div>
   </header>
 
@@ -179,6 +187,7 @@
           <button class="stab" data-sheet="recommended"><span>Recomendadas</span><span class="stab-cnt" id="cnt-rec">0</span></button>
           <button class="stab" data-sheet="saved"><span>Salvas</span><span class="stab-cnt" id="cnt-saved">0</span></button>
           <button class="stab" data-sheet="applied"><span>Enviadas</span><span class="stab-cnt" id="cnt-applied">0</span></button>
+          <button class="stab stab-sheet-base gone" data-sheet="disclosure" title="Empregadores que contrataram pelo programa em temporadas passadas (base de divulgação do DOL)"><span>📂 Base DOL</span><span class="stab-cnt" id="cnt-base">0</span></button>
         </div>
         <div class="search-bar">
           <div class="search-wrap">
@@ -362,6 +371,7 @@
   <div style="display:flex;gap:6px;padding:0 4px 10px">
     <button class="d-quick-btn" id="dr-theme"><i class="ti ti-moon"></i> Tema</button>
     <button class="d-quick-btn" id="dr-mode"><i class="ti ti-device-mobile"></i> <span id="dr-mode-lbl">Auto</span></button>
+    <button class="d-quick-btn notranslate" id="dr-lang" title="Traduzir as vagas"><i class="ti ti-language"></i> <span id="dr-lang-lbl">English</span></button>
   </div>
   <button class="d-item" id="dr-auto"><i class="ti ti-rocket" style="color:var(--purple)"></i> Envio automático</button>
   <button class="d-item" data-sv="home"><i class="ti ti-home"></i> Início</button>
@@ -494,6 +504,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/h2b/js/app.js"></script>
+<script src="/h2b/js/translate.js"></script>
 <script src="/h2b/js/jobs.js"></script>
 <script src="/h2b/js/send.js"></script>
 <script src="/h2b/js/profile.js"></script>

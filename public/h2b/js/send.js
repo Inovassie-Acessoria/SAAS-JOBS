@@ -42,8 +42,9 @@ H2B.send = (function () {
     const to = recipientOf(j);
     const tpl = state.templates;
     $('#sm-body').innerHTML = `
+      ${j.origin === 'disclosure' ? `<div class="alert al-blue" style="margin-bottom:10px"><i class="ti ti-folder-open"></i><div><b>Base DOL ${esc(String(j.start_date || '').slice(0, 4))}</b> — esta vaga é de temporada passada. O e-mail vai como interesse na <b>próxima temporada</b>, com o modelo próprio da base.</div></div>` : ''}
       <div class="chip-row">
-        <div class="chip" style="flex:1 1 100%"><div class="chip-l">Vaga</div><div class="chip-v">${esc(j.job_title)} ${visaTag(j.visa_type)}</div></div>
+        <div class="chip" style="flex:1 1 100%"><div class="chip-l">Vaga</div><div class="chip-v"><span translate="yes">${esc(j.job_title)}</span> ${visaTag(j.visa_type)}</div></div>
         <div class="chip"><div class="chip-l">Empresa</div><div class="chip-v">${esc(j.employer_name)}</div></div>
         <div class="chip"><div class="chip-l">Para</div><div class="chip-v" style="color:var(--blue)">${esc(to || '— sem e-mail —')}</div></div>
         <div class="chip"><div class="chip-l">Salário</div><div class="chip-v">${money(j.wage_rate, j.wage_unit)}</div></div>
@@ -90,8 +91,8 @@ H2B.send = (function () {
       ${(review.reasons || []).length ? `<div class="alert al-amber" style="margin-top:8px"><i class="ti ti-eye"></i><div>${review.reasons.map(r => esc(typeof r === 'string' ? r : r.message || r.label || JSON.stringify(r))).join('<br>')}</div></div>` : ''}
       <div class="jd-section-title">E-mail</div>
       <div class="chip-row"><div class="chip" style="flex:1 1 100%"><div class="chip-l">Para</div><div class="chip-v" style="color:var(--blue)">${esc(pkg.recipient_email)}</div></div>
-      <div class="chip" style="flex:1 1 100%"><div class="chip-l">Assunto</div><div class="chip-v">${esc(pkg.email_subject)}</div></div></div>
-      <div class="prof-mini"><div class="prof-mini-lbl">Corpo</div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(pkg.email_body)}</div></div>
+      <div class="chip" style="flex:1 1 100%"><div class="chip-l">Assunto</div><div class="chip-v notranslate">${esc(pkg.email_subject)}</div></div></div>
+      <div class="prof-mini"><div class="prof-mini-lbl">Corpo <span class="hint" style="font-weight:600;text-transform:none;letter-spacing:0">— vai em inglês, como está aqui</span></div><div class="notranslate" style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto">${esc(pkg.email_body)}</div></div>
       <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">${att}</div>
       ${p.resume ? `<div class="hint" style="margin-top:6px">Currículo: <b>${esc(p.resume.name)}</b> — ${esc(p.resumeReason || '')}</div>` : ''}
       <div class="jd-section-title">Verificações</div>
@@ -408,7 +409,7 @@ H2B.send = (function () {
       </div>
       ${banner}
       <div class="auto-prog-bg" style="margin:-4px 0 12px"><div class="auto-prog-fill" style="width:${pct}%"></div></div>
-      ${next ? `<div class="next-job-card"><div class="next-job-title">▶ Próxima da fila</div><div class="next-job-info">${esc(next.job_title)} — ${esc(next.employer_name)}</div><div class="next-job-sub">${esc(next.employer_state || '')} · ${money(next.wage_rate, 'Hour')} · ${esc(next.recipient_email)}</div></div>` : ''}
+      ${next ? `<div class="next-job-card"><div class="next-job-title">▶ Próxima da fila</div><div class="next-job-info"><span translate="yes">${esc(next.job_title)}</span> — ${esc(next.employer_name)}</div><div class="next-job-sub">${esc(next.employer_state || '')} · ${money(next.wage_rate, 'Hour')} · ${esc(next.recipient_email)}</div></div>` : ''}
       ${review.length ? `<div class="alert al-purple" style="margin-bottom:12px"><i class="ti ti-eye"></i><div><b>${review.length} candidatura(s) esperando sua revisão.</b> <a href="#" data-review-list style="color:var(--purple);font-weight:800">Revisar agora</a></div></div>` : ''}
       <div class="auto-controls-row">
         ${paused ? `<button class="btn btn-success" id="ad-resume"><i class="ti ti-player-play"></i> Retomar</button>` : `<button class="btn btn-secondary" id="ad-pause"><i class="ti ti-player-pause"></i> Pausar</button>`}
@@ -449,7 +450,7 @@ H2B.send = (function () {
   function renderReviewList(items) {
     $('#ad-review-list').innerHTML = `<div class="home-section-title">Aguardando revisão</div>` + items.map(i => `
       <div class="hcard"><div class="hcard-main">
-        <div class="hcard-job">${esc(i.job_title)}</div>
+        <div class="hcard-job" translate="yes">${esc(i.job_title)}</div>
         <div class="hcard-co"><i class="ti ti-building"></i> ${esc(i.employer_name)} · ${esc(i.employer_state || '')}</div>
         <div class="hcard-to"><i class="ti ti-mail"></i><span>${esc(i.recipient_email)}</span></div>
         ${(i.reviewReasons || []).length ? `<div class="hint" style="margin:4px 0">${i.reviewReasons.map(r => esc(typeof r === 'string' ? r : r.message || r.label || '')).join(' · ')}</div>` : ''}

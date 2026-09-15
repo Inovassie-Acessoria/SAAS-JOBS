@@ -94,8 +94,9 @@ function applyHardFilters(job, config = {}) {
     }
   }
 
-  // Vaga expirada
-  if (job.end_date) {
+  // Vaga expirada — menos a base de divulgação do DOL, que é de temporada
+  // passada por definição: ali o interesse é a PRÓXIMA temporada.
+  if (job.end_date && job.origin !== 'disclosure') {
     const end = new Date(job.end_date);
     if (!isNaN(end.getTime()) && end.getTime() < Date.now()) {
       return { passed: false, rule: 'expired', reason: `Período de trabalho encerrado em ${job.end_date}.` };

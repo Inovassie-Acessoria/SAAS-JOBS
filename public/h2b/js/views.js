@@ -72,8 +72,8 @@ H2B.views = (function () {
     const att = safeJson(i.attachments_json, []) || [];
     $('#hm-title').textContent = i.employer_name; $('#hm-sub').textContent = `${fmtDateTime(i.sent_at)} · ${i.recipient_email}`;
     $('#hm-body').innerHTML = `
-      <div class="chip-row"><div class="chip" style="flex:1 1 100%"><div class="chip-l">Assunto</div><div class="chip-v">${esc(i.subject)}</div></div><div class="chip"><div class="chip-l">Ordem</div><div class="chip-v">#${esc(i.job_order_id)}</div></div><div class="chip"><div class="chip-l">Status</div><div class="chip-v">${esc(i.status)}</div></div></div>
-      <div class="prof-mini"><div class="prof-mini-lbl">Texto enviado</div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(i.content_sent || '')}</div></div>
+      <div class="chip-row"><div class="chip" style="flex:1 1 100%"><div class="chip-l">Assunto</div><div class="chip-v notranslate">${esc(i.subject)}</div></div><div class="chip"><div class="chip-l">Ordem</div><div class="chip-v">#${esc(i.job_order_id)}</div></div><div class="chip"><div class="chip-l">Status</div><div class="chip-v">${esc(i.status)}</div></div></div>
+      <div class="prof-mini"><div class="prof-mini-lbl">Texto enviado</div><div class="notranslate" style="font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(i.content_sent || '')}</div></div>
       <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap">${att.map(a => `<span class="tag tb">📎 ${esc(a.filename || a)}</span>`).join('') || '<span class="tag ta">sem anexos</span>'}</div>`;
     $('#hm-foot').innerHTML = `<button class="btn btn-secondary" data-close="hist-modal">Fechar</button><button class="btn btn-primary" id="hm-job" style="flex:1"><i class="ti ti-briefcase"></i> Ver vaga</button>`;
     $('#hm-job').onclick = () => { closeModal('hist-modal'); H2B.sv('jobs', { jobId: i.seasonal_job_id }); };
@@ -102,7 +102,7 @@ H2B.views = (function () {
         const p = { q, limit: 60, view: 'all' };
         if (pq.src === 'H-2A' || pq.src === 'H-2B') p.visaType = pq.src;
         const r = await API.seasonal.listJobs(p);
-        (r.jobs || []).forEach(j => html.push(`<div class="pesq-result-card" data-job="${j.id}"><span class="pesq-src-badge pesq-src-seasonal">vaga</span><div class="pesq-result-title">${hl(j.job_title)}</div><div class="pesq-result-co">${hl(j.employer_name)}</div><div class="pesq-result-meta">${visaTag(j.visa_type)}<span class="pesq-result-pill tag">${hl((j.employer_city || '') + ', ' + (j.employer_state || ''))}</span><span class="pesq-result-pill tag tg">${money(j.wage_rate, j.wage_unit)}</span><span class="pesq-result-pill tag">#${hl(j.job_order_id)}</span>${j.is_applied ? '<span class="pesq-result-pill tag tg">✓ enviada</span>' : ''}</div></div>`));
+        (r.jobs || []).forEach(j => html.push(`<div class="pesq-result-card" data-job="${j.id}"><span class="pesq-src-badge pesq-src-seasonal">vaga</span><div class="pesq-result-title" translate="yes">${hl(j.job_title)}</div><div class="pesq-result-co">${hl(j.employer_name)}</div><div class="pesq-result-meta">${visaTag(j.visa_type)}<span class="pesq-result-pill tag">${hl((j.employer_city || '') + ', ' + (j.employer_state || ''))}</span><span class="pesq-result-pill tag tg">${money(j.wage_rate, j.wage_unit)}</span><span class="pesq-result-pill tag">#${hl(j.job_order_id)}</span>${j.is_applied ? '<span class="pesq-result-pill tag tg">✓ enviada</span>' : ''}</div></div>`));
       }
       if (pq.src === 'all' || pq.src === 'hist') {
         if (!hs.items.length) { try { hs.items = (await API.seasonal.sent()).applications || []; } catch (e) { /* */ } }
@@ -138,7 +138,7 @@ H2B.views = (function () {
     $('#logs-list').innerHTML = items.length ? items.map(i => `
       <div class="log-entry" data-job="${i.job_id}" ${i.status === 'AWAITING_REVIEW' ? `data-pkg="${i.package_id}"` : ''}>
         <span class="log-status ${ST[i.status] || 'ls-sistema'}">${STL[i.status] || i.status}</span>
-        <div class="log-main"><div class="log-company">${esc(i.job_title)} — ${esc(i.employer_name)}</div><div class="log-email">${esc(i.recipient_email)}</div>
+        <div class="log-main"><div class="log-company"><span translate="yes">${esc(i.job_title)}</span> — ${esc(i.employer_name)}</div><div class="log-email">${esc(i.recipient_email)}</div>
           <div class="log-meta">${visaTag(i.visa_type)} ${i.attempts ? `· ${i.attempts} tentativa(s)` : ''} ${i.next_attempt_at ? `· próxima ${fmtDateTime(i.next_attempt_at)}` : ''} ${i.status === 'AWAITING_REVIEW' ? '· <b style="color:var(--purple)">toque para aprovar</b>' : ''}</div>
           ${i.last_error ? `<div class="log-error">${esc(i.last_error)}</div>` : ''}${(i.reviewReasons || []).length ? `<div class="log-error" style="color:var(--purple)">${i.reviewReasons.map(r => esc(typeof r === 'string' ? r : r.message || r.label || '')).join(' · ')}</div>` : ''}</div>
         <span class="log-date">${fmtDateTime(i.sent_at || i.created_at)}</span>
@@ -198,12 +198,13 @@ H2B.views = (function () {
   async function renderSettings() {
     const el = $('#settings-body');
     el.innerHTML = '<div class="skel" style="height:120px"></div>';
-    let cfg, senders, creds, gmail, sched, discarded = [], storage = null;
+    let cfg, senders, creds, gmail, sched, discarded = [], storage = null, disc = null;
     try {
       [cfg, senders, creds, gmail, sched] = await Promise.all([API.seasonal.getConfig(), API.gmailSenders.list(), API.googleCredentials.status(), API.seasonal.gmailStatus(), API.core.scheduler()]);
       cfg = cfg.config; state.senders = senders; state.scheduler = sched;
       discarded = (await API.seasonal.listJobs({ view: 'discarded', limit: 50 })).jobs || [];
       try { storage = await API.core.storage(); } catch (e) { storage = null; }
+      try { disc = await API.seasonal.importDisclosureStatus(); } catch (e) { disc = null; }
     } catch (e) { el.innerHTML = `<div class="empty-state"><p>${esc(e.message)}</p></div>`; return; }
     const mb = (n) => `${(Number(n || 0) / 1024 / 1024).toFixed(1)} MB`;
     const mode = H2B.ls('h2b_screen_mode') || 'auto';
@@ -303,6 +304,26 @@ H2B.views = (function () {
         </div>
       </div>
 
+      <div class="prof-card" style="margin-bottom:12px" id="st-disclosure-card">
+        <div class="prof-card-hd"><i class="ti ti-folder-open"></i><span>Base de vagas do DOL (temporadas passadas)</span>${disc && disc.inBase ? `<span class="tag tb" style="margin-left:auto">${disc.inBase} no acervo</span>` : ''}</div>
+        <div class="prof-card-bd">
+          <div class="hint" style="margin-bottom:8px">Importe o JSON da base de divulgação do DOL (H-2B Disclosure Data). São empregadores que contrataram pelo programa em temporadas passadas: entram com selo próprio, a candidatura vai como interesse na próxima temporada, e a curadoria dobra pedidos repetidos e esconde quem já tem a mesma vaga entre as atuais.</div>
+          ${disc && disc.running ? `<div class="alert al-blue" style="margin-bottom:8px"><span class="spin spin-sm"></span><div>Importando… <b id="st-disc-phase">${esc(disc.phase || '')}</b> <span id="st-disc-prog">${disc.total ? `${disc.done}/${disc.total}` : ''}</span></div></div>` : ''}
+          ${disc && disc.error && !disc.running ? `<div class="alert al-red" style="margin-bottom:8px"><i class="ti ti-alert-triangle"></i><div>Última importação falhou: ${esc(disc.error)}</div></div>` : ''}
+          ${disc && disc.lastReport ? `<div class="info-grid" style="margin-bottom:8px">
+            <div class="info-box"><div class="info-lbl">Última importação</div><div class="info-val">${H2B.fmtDateTime(disc.lastReport.finishedAt)}</div><div class="hint">${esc(disc.lastReport.file || '')}</div></div>
+            <div class="info-box"><div class="info-lbl">Linhas → cards</div><div class="info-val">${disc.lastReport.received} → ${disc.lastReport.cards}</div><div class="hint">${disc.lastReport.mergedRows} pedido(s) dobrado(s)</div></div>
+            <div class="info-box"><div class="info-lbl">Com e-mail</div><div class="info-val">${disc.lastReport.withEmail}</div><div class="hint">${disc.lastReport.websiteOnly} só site</div></div>
+            <div class="info-box"><div class="info-lbl">Ocultas</div><div class="info-val">${disc.lastReport.hiddenByCurrent}</div><div class="hint">já têm a mesma vaga atual</div></div>
+            <div class="info-box"><div class="info-lbl">Descrição do DOL</div><div class="info-val">${disc.lastReport.enriched && disc.lastReport.enriched.attempted ? disc.lastReport.enriched.withDuties : '—'}</div><div class="hint">${disc.lastReport.enriched && disc.lastReport.enriched.error ? 'índice indisponível' : 'pelo índice público'}</div></div>
+          </div>` : ''}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input type="file" id="st-disc-file" accept=".json,application/json" style="font-size:12px;max-width:100%">
+            <button class="btn btn-primary btn-sm" id="st-disc-import" ${disc && disc.running ? 'disabled' : ''}><i class="ti ti-upload"></i> Importar base</button>
+          </div>
+        </div>
+      </div>
+
       <div class="prof-card" style="margin-bottom:12px">
         <div class="prof-card-hd"><i class="ti ti-palette"></i><span>Aparência</span></div>
         <div class="prof-card-bd">
@@ -315,7 +336,7 @@ H2B.views = (function () {
       <div class="prof-card">
         <div class="prof-card-hd"><i class="ti ti-trash"></i><span>Vagas descartadas</span><span class="tag" style="margin-left:auto">${discarded.length}</span></div>
         <div class="prof-card-bd">
-          ${discarded.map(j => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px"><div style="flex:1;min-width:0"><b>${esc(j.job_title)}</b><div class="hint">${esc(j.employer_name)} · ${esc(j.employer_state || '')}</div></div><button class="btn btn-secondary btn-xs" data-restore="${j.id}">Restaurar</button></div>`).join('') || '<div class="hint">Nenhuma.</div>'}
+          ${discarded.map(j => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px"><div style="flex:1;min-width:0"><b translate="yes">${esc(j.job_title)}</b><div class="hint">${esc(j.employer_name)} · ${esc(j.employer_state || '')}</div></div><button class="btn btn-secondary btn-xs" data-restore="${j.id}">Restaurar</button></div>`).join('') || '<div class="hint">Nenhuma.</div>'}
         </div>
       </div>
       <div class="hint" style="margin-top:14px;text-align:center">H2 Dream · uso pessoal · dados neste servidor<br><a href="/privacidade" target="_blank" rel="noopener" style="color:var(--blue)">Política de Privacidade</a> · <a href="/termos" target="_blank" rel="noopener" style="color:var(--blue)">Termos de Serviço</a></div>
@@ -366,6 +387,24 @@ H2B.views = (function () {
     $('#st-theme').onclick = H2B.toggleTheme;
     $('#st-tour').onclick = () => H2B.profile.startTour();
     $('#st-ob').onclick = () => H2B.profile.startOnboarding();
+    const di = $('#st-disc-import'); if (di) di.onclick = async () => {
+      const f = $('#st-disc-file').files[0];
+      if (!f) { toast('Escolha o arquivo .json da base primeiro.'); return; }
+      const form = new FormData(); form.append('file', f);
+      di.disabled = true; di.innerHTML = '<span class="spin spin-sm"></span> Enviando…';
+      try {
+        await API.seasonal.importDisclosure(form);
+        toast('Arquivo recebido. A importação roda em segundo plano — acompanhe aqui.', 'ok', 6000);
+        // acompanha até terminar, depois redesenha
+        const poll = async () => {
+          try { const st = await API.seasonal.importDisclosureStatus(); const ph = $('#st-disc-phase'); const pg = $('#st-disc-prog'); if (ph) ph.textContent = st.phase || ''; if (pg) pg.textContent = st.total ? `${st.done}/${st.total}` : ''; if (st.running) { setTimeout(poll, 2000); return; } }
+          catch (e) { /* tenta de novo */ }
+          if (state.view === 'settings') renderSettings();
+          if (H2B.jobs && H2B.jobs.loadFacets) H2B.jobs.loadFacets();
+        };
+        setTimeout(() => { renderSettings().then(() => setTimeout(poll, 1500)); }, 800);
+      } catch (e) { err(e); di.disabled = false; di.innerHTML = '<i class="ti ti-upload"></i> Importar base'; }
+    };
     const bk = $('#st-backup-now'); if (bk) bk.onclick = async () => {
       bk.disabled = true; bk.innerHTML = '<span class="spin spin-sm"></span> Copiando…';
       try { const r = await API.core.backupNow(); toast(`Backup ${r.backup.file} pronto: ${r.backup.applications} candidatura(s), ${r.backup.jobs} vaga(s), conferido.`, 'ok', 7000); renderSettings(); }

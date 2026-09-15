@@ -354,6 +354,8 @@ window.H2B = (function () {
     try {
       msg.textContent = 'Carregando preferências…';
       await loadPrefs();
+      // Idioma das vagas (Google Tradutor): aplica a escolha salva sem segurar o boot.
+      if (H2B.lang) H2B.lang.boot();
       msg.textContent = 'Carregando seu perfil…';
       try { state.profile = (await API.env('seasonal', 'US').profile()).profile; } catch (e) { state.profile = null; }
       renderIdentity();

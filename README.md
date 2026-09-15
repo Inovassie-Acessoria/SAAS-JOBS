@@ -88,6 +88,42 @@ Testes nunca tocam o banco real: com `NODE_ENV=test` sem `DB_PATH`, o
 processo ganha um banco temporário; `DB_PATH` apontando para o banco real sob
 `NODE_ENV=test` é recusado.
 
+## Base de vagas do DOL (temporadas passadas)
+
+Além do feed e do índice do DOL (vagas atuais), o acervo aceita a **base de
+divulgação** do DOL (H-2B Disclosure Data) convertida em JSON: um registro por
+pedido certificado, com empregador, cargo, salário, contato e como se
+candidatar. São vagas de temporada passada, de empregadores que contratam pelo
+programa todo ano. Elas entram com `origin = 'disclosure'`, selo próprio na
+lista (aba **📂 Base DOL** e filtro **Origem**), e a candidatura sai como
+interesse na **próxima temporada**, com modelo de e-mail próprio (público
+"Base DOL" no editor de modelos).
+
+Curadoria na importação: só pedidos certificados e completos; mesmo empregador
++ cargo + cidade/estado vira um card (pedidos irmãos ficam listados nele);
+e-mail de "como se candidatar", senão o do contato do empregador — nunca o do
+advogado; o índice público do DOL completa a descrição real das tarefas; e a
+vaga da base fica oculta enquanto o mesmo empregador tiver o mesmo cargo entre
+as vagas atuais (marca `dup_hidden`, recalculada a cada importação).
+
+```bash
+# pelo painel: Configurações › "Base de vagas do DOL" › escolher o .json › Importar
+# ou no servidor:
+node scripts/importDisclosure.js caminho/vagas_h2b_certificadas.json
+node scripts/importDisclosure.js arquivo.json --no-enrich   # sem consultar o índice do DOL
+```
+
+Reimportar o mesmo arquivo não duplica nada (a chave é o número do caso).
+
+## Tradução das vagas
+
+O botão **🌐 EN/PT** no cabeçalho traduz o conteúdo das vagas (título, descrição,
+requisitos) com o widget do Google Tradutor — sem chave, sem custo, sem passar
+pelo servidor. A interface fica como está (o `<body>` é `notranslate`; só o
+conteúdo das vagas libera com `translate="yes"`), e o e-mail ao empregador
+sai sempre em inglês. A escolha é salva nas preferências do servidor
+(`lang`), como as demais.
+
 ## Arquitetura
 
 ```

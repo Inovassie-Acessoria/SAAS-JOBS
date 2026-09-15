@@ -14,6 +14,7 @@ const scoreEngine = require('../core/match/scoreEngine');
 const timelineEngine = require('../core/timeline/hiringTimelineEngine');
 const { DolAdapter, DEFAULT_BASE_URL: DOL_DEFAULT_BASE_URL } = require('./adapters/dolAdapter');
 const { HEALTH } = require('./adapters/mcpClient');
+const dedupKeys = require('../core/jobs/dedupKeys');
 
 const COUNTRY = 'US';
 const PLATFORM = 'seasonal';
@@ -194,6 +195,63 @@ async function testConnection() {
 // Importação
 // ---------------------------------------------------------------------------
 
+/**
+ * Persiste, filtra e pontua um lote de vagas já normalizadas — o mesmo
+ * caminho para o feed, o índice e a base de divulgação, para que toda vaga
+ * do acervo tenha análise, score e classificação de janela.
+ */
+function runPipeline(jobs, { cfg, profile, userId, force = false }) {
+  const atsInfo = resolveAts(cfg, userId);
+  const targetYear = cfg.target_hiring_year || 2027;
+  const queueWeights = safeParse(cfg.queue_weights_json, null) || timelineEngine.DEFAULT_QUEUE_WEIGHTS;
+
+  const visaPrefs = [];
+  if (cfg.h2a_preference) visaPrefs.push('H-2A');
+  if (cfg.h2b_preference) visaPrefs.push('H-2B');
+
+  return pipeline.run(jobs, {
+    tables: { jobs: 'seasonal_jobs', analysis: 'seasonal_job_analysis', matches: 'seasonal_matches' },
+    profile,
+    thresholds: { topPriority: 90, strongMatch: 80, possibleMatch: 70 },
+    filterConfig: {
+      excludedOccupations: profile.excludedOccupations,
+      minHourlyWage: cfg.min_hourly_wage,
+      preferredStates: profile.preferredStates,
+      visaPreferences: visaPrefs.length === 2 ? null : visaPrefs
+    },
+    atsScore: atsInfo.score, atsVersion: atsInfo.version,
+    atsComponents: atsInfo.components, atsStatus: atsInfo.status, atsAnalysis: atsInfo.analysis,
+    queueWeights,
+    force: Boolean(force),
+    // Sem LLM a análise é barata: pontua TODAS as ordens, em vez de deixar
+    // metade sem score (e portanto fora do automático) por falta de
+    // sobreposição com as habilidades digitadas. Com LLM ligado, o pré-filtro
+    // volta a valer para conter custo.
+    prefilter: require('./aiService').status().llmAvailable,
+
+    timelineFor: (job) => timelineEngine.classifyTimeline(job, targetYear),
+
+    findExisting: (job) => db.prepare('SELECT id FROM seasonal_jobs WHERE job_order_id = ?').get(job.job_order_id),
+
+    upsertJob: (job, hash) => {
+      upsertJob(job, hash);
+      const row = db.prepare('SELECT id FROM seasonal_jobs WHERE job_order_id = ?').get(job.job_order_id);
+      return row ? row.id : null;
+    },
+
+    loadJob: (id) => db.prepare('SELECT * FROM seasonal_jobs WHERE id = ?').get(id),
+
+    // Grava a classificação de timeline junto da vaga, para ordenação em SQL.
+    afterScore: (jobId, job, { timeline }) => {
+      if (!timeline) return;
+      db.prepare(`UPDATE seasonal_jobs SET timeline_class = ?, timeline_priority = ?, timeline_weight = ?,
+                  timeline_label = ?, timeline_explanation = ?, timeline_period = ? WHERE id = ?`)
+        .run(timeline.timelineClass, timeline.priority, timeline.weight,
+             timeline.label, timeline.explanation, timeline.periodLabel || null, jobId);
+    }
+  });
+}
+
 async function importJobs(options = {}, userId) {
   const started = Date.now();
   const cfg = getConfig();
@@ -249,55 +307,9 @@ async function importJobs(options = {}, userId) {
     throw e;
   }
 
-  const atsInfo = resolveAts(cfg, userId);
-  const targetYear = cfg.target_hiring_year || 2027;
-  const queueWeights = safeParse(cfg.queue_weights_json, null) || timelineEngine.DEFAULT_QUEUE_WEIGHTS;
-
-  const visaPrefs = [];
-  if (cfg.h2a_preference) visaPrefs.push('H-2A');
-  if (cfg.h2b_preference) visaPrefs.push('H-2B');
-
-  const metrics = pipeline.run(payload.jobs, {
-    tables: { jobs: 'seasonal_jobs', analysis: 'seasonal_job_analysis', matches: 'seasonal_matches' },
-    profile,
-    thresholds: { topPriority: 90, strongMatch: 80, possibleMatch: 70 },
-    filterConfig: {
-      excludedOccupations: profile.excludedOccupations,
-      minHourlyWage: cfg.min_hourly_wage,
-      preferredStates: profile.preferredStates,
-      visaPreferences: visaPrefs.length === 2 ? null : visaPrefs
-    },
-    atsScore: atsInfo.score, atsVersion: atsInfo.version,
-    atsComponents: atsInfo.components, atsStatus: atsInfo.status, atsAnalysis: atsInfo.analysis,
-    queueWeights,
-    force: Boolean(options.force),
-    // Sem LLM a análise é barata: pontua TODAS as ordens, em vez de deixar
-    // metade sem score (e portanto fora do automático) por falta de
-    // sobreposição com as habilidades digitadas. Com LLM ligado, o pré-filtro
-    // volta a valer para conter custo.
-    prefilter: require('./aiService').status().llmAvailable,
-
-    timelineFor: (job) => timelineEngine.classifyTimeline(job, targetYear),
-
-    findExisting: (job) => db.prepare('SELECT id FROM seasonal_jobs WHERE job_order_id = ?').get(job.job_order_id),
-
-    upsertJob: (job, hash) => {
-      upsertJob(job, hash);
-      const row = db.prepare('SELECT id FROM seasonal_jobs WHERE job_order_id = ?').get(job.job_order_id);
-      return row ? row.id : null;
-    },
-
-    loadJob: (id) => db.prepare('SELECT * FROM seasonal_jobs WHERE id = ?').get(id),
-
-    // Grava a classificação de timeline junto da vaga, para ordenação em SQL.
-    afterScore: (jobId, job, { timeline }) => {
-      if (!timeline) return;
-      db.prepare(`UPDATE seasonal_jobs SET timeline_class = ?, timeline_priority = ?, timeline_weight = ?,
-                  timeline_label = ?, timeline_explanation = ?, timeline_period = ? WHERE id = ?`)
-        .run(timeline.timelineClass, timeline.priority, timeline.weight,
-             timeline.label, timeline.explanation, timeline.periodLabel || null, jobId);
-    }
-  });
+  const metrics = runPipeline(payload.jobs, { cfg, profile, userId, force: options.force });
+  // Vagas novas do DOL podem cobrir vagas da base: esconde-as agora.
+  try { refreshDuplicateFlags(); } catch (e) { /* a base pode nem existir */ }
 
   db.prepare(`INSERT INTO seasonal_searches
     (params_json, duration_ms, results_found, new_results, duplicates, filtered_out, analyzed, recommended, errors_json)
@@ -340,9 +352,11 @@ function upsertJob(j, hash) {
      duties_description, special_requirements, application_method, application_email, application_url,
      content_hash, raw_json,
      first_seen_feed, last_seen_feed, feed_appearances, feed_key, dol_url, dol_published,
-     dol_active, dol_status, dol_accepted_at, dol_active_until, dol_checked_at)
+     dol_active, dol_status, dol_accepted_at, dol_active_until, dol_checked_at,
+     origin, origin_ref, employer_key, title_key, merged_cases_json)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,1,?,?,?,?,?,?,?,?)
+            ?,?,1,?,?,?,?,?,?,?,?,
+            ?,?,?,?,?)
     ON CONFLICT(job_order_id) DO UPDATE SET
       -- Uma fonte mais pobre (o índice sem e-mail, o feed sem descrição) nunca
       -- apaga o que outra já trouxe: vazio não substitui valor.
@@ -374,8 +388,14 @@ function upsertJob(j, hash) {
       dol_status = COALESCE(excluded.dol_status, seasonal_jobs.dol_status),
       dol_accepted_at = COALESCE(excluded.dol_accepted_at, seasonal_jobs.dol_accepted_at),
       dol_active_until = COALESCE(excluded.dol_active_until, seasonal_jobs.dol_active_until),
-      dol_checked_at = COALESCE(excluded.dol_checked_at, seasonal_jobs.dol_checked_at)`)
-    .run(j.job_order_id, j.visa_type, j.job_title, j.normalized_title, j.soc_code, j.employer_name,
+      dol_checked_at = COALESCE(excluded.dol_checked_at, seasonal_jobs.dol_checked_at),
+      -- Origem: quem já é 'dol' não vira base; a base só entra em quem nunca teve origem.
+      origin = COALESCE(seasonal_jobs.origin, excluded.origin),
+      origin_ref = COALESCE(excluded.origin_ref, seasonal_jobs.origin_ref),
+      employer_key = excluded.employer_key, title_key = excluded.title_key,
+      merged_cases_json = COALESCE(excluded.merged_cases_json, seasonal_jobs.merged_cases_json)`)
+    // Campo ausente (undefined) vira NULL: o SQLite não aceita undefined.
+    .run(...[j.job_order_id, j.visa_type, j.job_title, j.normalized_title, j.soc_code, j.employer_name,
          j.employer_city, j.employer_state, j.employer_phone, j.employer_email, j.attorney_name,
          j.attorney_email, j.wage_rate, j.wage_unit, j.start_date, j.end_date, j.openings,
          j.weekly_hours, j.housing_provided, j.transportation_provided, j.duties_description,
@@ -384,7 +404,9 @@ function upsertJob(j, hash) {
          j.feed_date || null, j.feed_date || null, j.feed_key || null,
          j.dol_url || null, j.dol_published ? 1 : 0,
          j.dol_active === undefined ? null : j.dol_active, j.dol_status || null, j.dol_accepted_at || null,
-         j.dol_active_until || null, j.dol_active !== undefined && j.dol_active !== null ? new Date().toISOString() : null);
+         j.dol_active_until || null, j.dol_active !== undefined && j.dol_active !== null ? new Date().toISOString() : null,
+         j.origin || 'dol', j.origin_ref || null, dedupKeys.employerKey(j.employer_name), dedupKeys.titleKey(j.job_title),
+         j.merged_cases ? JSON.stringify(j.merged_cases) : null].map(v => (v === undefined ? null : v)));
 }
 
 /**
@@ -456,13 +478,40 @@ const HOURLY_WAGE_SQL = `CASE
 
 /**
  * Camada pelo estado no DOL — a mesma da fila automática: ativa e ainda não
- * iniciada (0), sem verificação (1), ativa mas já começou (2), inativa (3).
+ * iniciada (0), sem verificação (1), ativa mas já começou (2), base de
+ * divulgação de temporada passada (3), inativa/retirada (4).
  */
 const DOL_TIER_SQL = `CASE
     WHEN j.dol_active = 1 AND (j.start_date IS NULL OR j.start_date >= date('now')) THEN 0
     WHEN j.dol_active IS NULL THEN 1
     WHEN j.dol_active = 1 THEN 2
-    ELSE 3 END`;
+    WHEN j.origin = 'disclosure' THEN 3
+    ELSE 4 END`;
+
+/**
+ * Uma vaga da base de divulgação some quando o mesmo empregador já tem o
+ * mesmo cargo, no mesmo estado, entre as vagas atuais do DOL: a atual é a que
+ * vale, e mostrar as duas seria mostrar a mesma vaga duas vezes.
+ *
+ * A regra é recalculada em `refreshDuplicateFlags()` ao fim de TODA
+ * importação (feed, índice ou base) e gravada em `dup_hidden` — avaliar a
+ * subconsulta a cada listagem custava ~250 ms por consulta com 16 mil vagas.
+ */
+const HIDDEN_DUPLICATE_SQL = `(j.origin = 'disclosure' AND EXISTS (
+    SELECT 1 FROM seasonal_jobs a
+     WHERE a.origin = 'dol' AND a.employer_key = j.employer_key AND a.title_key = j.title_key
+       AND COALESCE(a.employer_state, '') = COALESCE(j.employer_state, '')))`;
+const VISIBLE_SQL = `COALESCE(j.dup_hidden, 0) = 0`;
+
+/** Recalcula quais vagas da base ficam ocultas. Devolve quantas estão ocultas. */
+function refreshDuplicateFlags() {
+  db.prepare(`UPDATE seasonal_jobs SET dup_hidden = CASE WHEN EXISTS (
+      SELECT 1 FROM seasonal_jobs a
+       WHERE a.origin = 'dol' AND a.employer_key = seasonal_jobs.employer_key AND a.title_key = seasonal_jobs.title_key
+         AND COALESCE(a.employer_state, '') = COALESCE(seasonal_jobs.employer_state, '')) THEN 1 ELSE 0 END
+    WHERE origin = 'disclosure'`).run();
+  return db.prepare("SELECT COUNT(*) c FROM seasonal_jobs WHERE dup_hidden = 1").get().c;
+}
 
 function listJobs({ view = 'all', visaType = null, applicationMethod = null, only2027 = false,
                     state = null, minFit = null, limit = 200, offset = 0,
@@ -471,9 +520,12 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
                     q = null, states = null, city = null, titles = null,
                     minWage = null, minOpenings = null, startMonths = null,
                     emailOnly = false, excludeApplied = false, housing = null, sort = null,
-                    dolActive = null, years = null } = {}) {
-  const where = [];
+                    dolActive = null, years = null, origin = null } = {}) {
+  const where = [VISIBLE_SQL];
   const params = [];
+
+  // Origem: vagas atuais do DOL ('dol') ou base de divulgação ('disclosure').
+  if (origin === 'dol' || origin === 'disclosure') { where.push('j.origin = ?'); params.push(origin); }
 
   // Busca livre: título, empregador, cidade, número da ordem (F2.3).
   if (q && String(q).trim()) {
@@ -590,13 +642,13 @@ function facets() {
            SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS active
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL AND j.employer_state IS NOT NULL AND j.employer_state <> ''
+    WHERE d.id IS NULL AND ${VISIBLE_SQL} AND j.employer_state IS NOT NULL AND j.employer_state <> ''
     GROUP BY j.employer_state ORDER BY total DESC`).all();
   const cities = db.prepare(`
     SELECT j.employer_state AS state, j.employer_city AS city, COUNT(*) AS total
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL AND j.employer_city IS NOT NULL AND j.employer_city <> ''
+    WHERE d.id IS NULL AND ${VISIBLE_SQL} AND j.employer_city IS NOT NULL AND j.employer_city <> ''
     GROUP BY j.employer_state, j.employer_city ORDER BY total DESC LIMIT 400`).all();
   const titles = db.prepare(`
     SELECT COALESCE(NULLIF(j.normalized_title, ''), j.job_title) AS title, COUNT(*) AS total,
@@ -604,13 +656,13 @@ function facets() {
            SUM(CASE WHEN j.visa_type = 'H-2B' THEN 1 ELSE 0 END) AS h2b
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL
+    WHERE d.id IS NULL AND ${VISIBLE_SQL}
     GROUP BY title ORDER BY total DESC LIMIT 300`).all();
   const months = db.prepare(`
     SELECT substr(j.start_date, 6, 2) AS month, COUNT(*) AS total
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL AND length(j.start_date) >= 7
+    WHERE d.id IS NULL AND ${VISIBLE_SQL} AND length(j.start_date) >= 7
     GROUP BY month ORDER BY month`).all();
   // Ano de início: o que o H2BApply chama de "Jan 2026 / Jul 2025", por ano.
   const years = db.prepare(`
@@ -618,7 +670,7 @@ function facets() {
            SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS active
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL AND length(j.start_date) >= 4
+    WHERE d.id IS NULL AND ${VISIBLE_SQL} AND length(j.start_date) >= 4
     GROUP BY year ORDER BY year`).all();
   const totals = db.prepare(`
     SELECT COUNT(*) AS total,
@@ -627,13 +679,15 @@ function facets() {
            SUM(CASE WHEN j.application_method = 'EMAIL' AND j.application_email <> '' THEN 1 ELSE 0 END) AS withEmail,
            SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS dolActive,
            SUM(CASE WHEN j.dol_active = 0 THEN 1 ELSE 0 END) AS dolInactive,
+           SUM(CASE WHEN j.origin = 'disclosure' THEN 1 ELSE 0 END) AS disclosure,
+           SUM(CASE WHEN j.origin = 'disclosure' THEN 0 ELSE 1 END) AS current,
            MAX(j.last_seen_feed) AS lastFeed
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
-    WHERE d.id IS NULL`).get();
+    WHERE d.id IS NULL AND ${VISIBLE_SQL}`).get();
   const counts = db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM seasonal_jobs j LEFT JOIN seasonal_discarded_jobs d ON j.id=d.job_id LEFT JOIN seasonal_matches m ON j.id=m.job_id WHERE d.id IS NULL AND m.opportunity_score >= 70) AS recommended,
+      (SELECT COUNT(*) FROM seasonal_jobs j LEFT JOIN seasonal_discarded_jobs d ON j.id=d.job_id LEFT JOIN seasonal_matches m ON j.id=m.job_id WHERE d.id IS NULL AND ${VISIBLE_SQL} AND m.opportunity_score >= 70) AS recommended,
       (SELECT COUNT(*) FROM seasonal_saved_jobs) AS saved,
       (SELECT COUNT(DISTINCT seasonal_job_id) FROM seasonal_applications) AS applied`).get();
   return { states, cities, titles, months, years, totals: Object.assign(totals, counts) };
@@ -646,14 +700,14 @@ function suggest(q, limit = 12) {
   const like = `%${term}%`;
   const out = [];
   const push = (kind, rows) => rows.forEach(r => out.push(Object.assign({ kind }, r)));
-  push('employer', db.prepare(`SELECT employer_name AS label, COUNT(*) AS total FROM seasonal_jobs
-      WHERE employer_name LIKE ? GROUP BY employer_name ORDER BY total DESC LIMIT ?`).all(like, limit));
-  push('title', db.prepare(`SELECT job_title AS label, COUNT(*) AS total FROM seasonal_jobs
-      WHERE job_title LIKE ? GROUP BY job_title ORDER BY total DESC LIMIT ?`).all(like, limit));
-  push('city', db.prepare(`SELECT employer_city || ', ' || employer_state AS label, COUNT(*) AS total FROM seasonal_jobs
-      WHERE employer_city LIKE ? GROUP BY employer_city, employer_state ORDER BY total DESC LIMIT ?`).all(like, limit));
-  push('order', db.prepare(`SELECT job_order_id AS label, job_title AS meta, id FROM seasonal_jobs
-      WHERE job_order_id LIKE ? LIMIT ?`).all(like, 5));
+  push('employer', db.prepare(`SELECT employer_name AS label, COUNT(*) AS total FROM seasonal_jobs j
+      WHERE employer_name LIKE ? AND ${VISIBLE_SQL} GROUP BY employer_name ORDER BY total DESC LIMIT ?`).all(like, limit));
+  push('title', db.prepare(`SELECT job_title AS label, COUNT(*) AS total FROM seasonal_jobs j
+      WHERE job_title LIKE ? AND ${VISIBLE_SQL} GROUP BY job_title ORDER BY total DESC LIMIT ?`).all(like, limit));
+  push('city', db.prepare(`SELECT employer_city || ', ' || employer_state AS label, COUNT(*) AS total FROM seasonal_jobs j
+      WHERE employer_city LIKE ? AND ${VISIBLE_SQL} GROUP BY employer_city, employer_state ORDER BY total DESC LIMIT ?`).all(like, limit));
+  push('order', db.prepare(`SELECT job_order_id AS label, job_title AS meta, id FROM seasonal_jobs j
+      WHERE job_order_id LIKE ? AND ${VISIBLE_SQL} LIMIT ?`).all(like, 5));
   return out.slice(0, limit * 3);
 }
 
@@ -701,7 +755,8 @@ function shapeJob(r) {
       weight: r.timeline_weight, label: r.timeline_label,
       explanation: r.timeline_explanation, periodLabel: r.timeline_period
     } : null,
-    isEmailEligible: r.application_method === 'EMAIL' && Boolean(r.application_email)
+    isEmailEligible: r.application_method === 'EMAIL' && Boolean(r.application_email),
+    mergedCases: safeParse(r.merged_cases_json, [])
   });
 }
 
@@ -732,7 +787,7 @@ function rankedCandidates(limit = 100) {
   const rows = db.prepare(`
     SELECT j.id, j.job_order_id, j.job_title, j.employer_name, j.employer_state, j.wage_rate,
            j.visa_type, j.employer_city, j.openings, j.housing_provided, j.normalized_title,
-           j.start_date, j.dol_active, j.dol_status, j.dol_accepted_at,
+           j.start_date, j.dol_active, j.dol_status, j.dol_accepted_at, j.origin,
            j.application_method, j.application_email, j.timeline_class, j.timeline_priority,
            j.timeline_weight, j.timeline_label, j.timeline_explanation, j.timeline_period,
            m.fit_score, m.ats_score, m.opportunity_score
@@ -740,17 +795,14 @@ function rankedCandidates(limit = 100) {
     JOIN seasonal_matches m ON j.id = m.job_id
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
     LEFT JOIN seasonal_applications ap ON j.id = ap.seasonal_job_id
-    WHERE d.id IS NULL AND ap.id IS NULL
+    WHERE d.id IS NULL AND ap.id IS NULL AND ${VISIBLE_SQL}
       AND j.application_method = 'EMAIL' AND j.application_email IS NOT NULL
       -- Retirada ou negada pelo DOL nunca entra na fila.
       AND (j.dol_status IS NULL OR (j.dol_status NOT LIKE '%Withdrawn%' AND j.dol_status NOT LIKE '%Denied%' AND j.dol_status NOT LIKE '%Rejected%'))
     ORDER BY
       -- 1º ativas no DOL que ainda não começaram; 2º sem estado conhecido;
-      -- 3º ativas já iniciadas; por último as inativas.
-      CASE WHEN j.dol_active = 1 AND (j.start_date IS NULL OR j.start_date >= date('now')) THEN 0
-           WHEN j.dol_active IS NULL THEN 1
-           WHEN j.dol_active = 1 THEN 2
-           ELSE 3 END,
+      -- 3º ativas já iniciadas; 4º base de divulgação; por último as inativas.
+      ${DOL_TIER_SQL},
       j.dol_accepted_at DESC, j.start_date ASC
     LIMIT ?
   `).all(Number(limit));
@@ -760,7 +812,7 @@ function rankedCandidates(limit = 100) {
     employer: r.employer_name, state: r.employer_state, wage: r.wage_rate,
     visaType: r.visa_type, city: r.employer_city, openings: r.openings,
     housing: Boolean(r.housing_provided), normalizedTitle: r.normalized_title,
-    dolActive: r.dol_active, dolStatus: r.dol_status, startDate: r.start_date,
+    dolActive: r.dol_active, dolStatus: r.dol_status, startDate: r.start_date, origin: r.origin,
     fitScore: r.fit_score, atsScore: r.ats_score, opportunityScore: r.opportunity_score,
     completeness: r.application_email ? 100 : 0,
     freshness: 60,
@@ -780,7 +832,8 @@ function rankedCandidates(limit = 100) {
     if (i.dolActive === 1 && (!i.startDate || i.startDate >= today)) return 0;
     if (i.dolActive === null || i.dolActive === undefined) return 1;
     if (i.dolActive === 1) return 2;
-    return 3;
+    if (i.origin === 'disclosure') return 3;
+    return 4;
   };
   return ranked
     .map((i, idx) => Object.assign(i, { dolTier: tier(i), _idx: idx }))
@@ -979,6 +1032,7 @@ function splitList(v) {
 }
 
 module.exports = {
+  VISIBLE_SQL, HIDDEN_DUPLICATE_SQL, runPipeline, refreshDuplicateFlags,
   COUNTRY, PLATFORM, AUTOMATION_MODES, REVIEW_MODES,
   getConfig, updateConfig, candidateProfile, buildAdapter,
   testConnection, importJobs,

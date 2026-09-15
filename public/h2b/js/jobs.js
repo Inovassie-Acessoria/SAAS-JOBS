@@ -31,7 +31,8 @@ H2B.jobs = (function () {
     quick: { emailOnly: false, excludeApplied: false, housing: false, dolActive: false },
     sort: 'priority',
     // states = estados MARCADOS na Localização (vazio = todos); years = anos de início.
-    filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [] },
+    // origin: 'all' | 'dol' (vagas atuais) | 'disclosure' (base de temporadas passadas)
+    filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [], origin: 'all' },
     jobs: [],
     offset: 0,
     done: false,
@@ -46,6 +47,7 @@ H2B.jobs = (function () {
       Object.assign(js.filters, f.filters || {});
       if (!Array.isArray(js.filters.years)) js.filters.years = [];
       if (!Array.isArray(js.filters.states)) js.filters.states = [];
+      if (!['all', 'dol', 'disclosure'].includes(js.filters.origin)) js.filters.origin = 'all';
       Object.assign(js.quick, f.quick || {});
       js.sort = f.sort || js.sort;
     }
@@ -59,7 +61,9 @@ H2B.jobs = (function () {
     const p = { limit: PAGE, offset: offset || 0, sort: js.sort === 'priority' ? undefined : js.sort };
     if (js.sheet === 'H-2A' || js.sheet === 'H-2B') { p.view = 'all'; p.visaType = js.sheet; }
     else if (js.sheet === 'recommended' || js.sheet === 'saved' || js.sheet === 'applied') p.view = js.sheet;
+    else if (js.sheet === 'disclosure') { p.view = 'all'; p.origin = 'disclosure'; }
     else p.view = 'all';
+    if (!p.origin && js.filters.origin !== 'all') p.origin = js.filters.origin;
     if (js.filters.visa !== 'all' && !p.visaType) p.visaType = js.filters.visa;
     if (js.q) p.q = js.q;
     if (js.quick.emailOnly) p.emailOnly = 1;
@@ -79,7 +83,8 @@ H2B.jobs = (function () {
   function activeFilterCount() {
     const f = js.filters;
     return (f.city ? 1 : 0) + (f.titles.length ? 1 : 0) + (f.minWage !== '' ? 1 : 0)
-         + (f.minOpenings !== '' ? 1 : 0) + (f.startMonths.length ? 1 : 0) + (f.visa !== 'all' ? 1 : 0) + (f.years.length ? 1 : 0);
+         + (f.minOpenings !== '' ? 1 : 0) + (f.startMonths.length ? 1 : 0) + (f.visa !== 'all' ? 1 : 0) + (f.years.length ? 1 : 0)
+         + (f.origin !== 'all' ? 1 : 0);
   }
   function anyFilterActive() {
     return activeFilterCount() > 0 || js.filters.states.length > 0 || Object.values(js.quick).some(Boolean);
@@ -110,6 +115,8 @@ H2B.jobs = (function () {
       $('#cnt-rec').textContent = t.recommended || 0;
       $('#cnt-saved').textContent = t.saved || 0;
       $('#cnt-applied').textContent = t.applied || 0;
+      $('#cnt-base').textContent = t.disclosure || 0;
+      $('.stab-sheet-base').classList.toggle('gone', !Number(t.disclosure));
       $('#jlist-feed').textContent = (t.lastFeed ? `feed ${H2B.fmtUSDate(t.lastFeed)}` : 'sem feed') + (t.dolActive ? ` · ${t.dolActive} ativas no DOL` : '');
       renderYearSelect();
     } catch (e) { /* silencioso */ }
@@ -140,7 +147,12 @@ H2B.jobs = (function () {
     return `<span class="tag ${cls}">${esc(j.timeline.label)}</span>`;
   }
   /** Estado do caso no DOL: ativa (recrutamento aberto), inativa, retirada, ou desconhecido. */
+  const ORIGIN_LABEL = { dol: '📡 vagas atuais do DOL', disclosure: '📂 base DOL (temporadas passadas)' };
+  function baseYear(j) { return String(j.start_date || '').slice(0, 4); }
   function dolTag(j) {
+    if (j.origin === 'disclosure') {
+      return `<span class="tag tb" title="Vaga certificada pelo DOL na temporada ${esc(baseYear(j))} — já encerrou. O empregador contrata pelo programa todo ano: a candidatura vai como interesse na próxima temporada.">📂 base DOL ${esc(baseYear(j))} · empregador recorrente</span>`;
+    }
     if (j.dol_active === 1) {
       const started = j.start_date && j.start_date < new Date().toISOString().slice(0, 10);
       return started ? '<span class="tag ta" title="Ativa no DOL, mas o contrato já começou">🟡 ativa · já começou</span>' : '<span class="tag tg" title="Recrutamento aberto no DOL">🟢 ativa no DOL</span>';
@@ -160,7 +172,7 @@ H2B.jobs = (function () {
     const active = js.selected && js.selected.id === j.id ? ' active' : '';
     return `<div class="jcard${applied}${active}" data-id="${j.id}">
       <button class="save-btn${j.is_saved ? ' on' : ''}" data-save="${j.id}" title="Salvar"><i class="ti ${j.is_saved ? 'ti-star-filled' : 'ti-star'}"></i></button>
-      <div class="jcard-title">${esc(j.job_title)}</div>
+      <div class="jcard-title" translate="yes">${esc(j.job_title)}</div>
       <div class="jcard-cat-row">${visaTag(j.visa_type)}${cat ? `<span class="jcard-cat-badge">${esc(cat)}</span>` : ''}</div>
       <div class="jcard-co"><i class="ti ti-building"></i> ${esc(j.employer_name)} · ${esc(j.employer_city || '')}${j.employer_city ? ', ' : ''}${esc(j.employer_state || '')}</div>
       <div class="jcard-tags">
@@ -170,6 +182,7 @@ H2B.jobs = (function () {
         ${j.housing_provided ? '<span class="tag tb">🏠 moradia</span>' : ''}
         ${j.isEmailEligible ? '<span class="tag tp">✉️ e-mail</span>' : '<span class="tag ta">📞 manual</span>'}
         ${dolTag(j)}
+        ${(j.mergedCases || []).length ? `<span class="tag" title="Pedidos ao DOL do mesmo empregador para o mesmo cargo, dobrados neste card">+${j.mergedCases.length} pedido${j.mergedCases.length > 1 ? 's' : ''}</span>` : ''}
         ${j.dol_url && j.dol_published ? `<a class="tag" href="${esc(j.dol_url)}" target="_blank" rel="noopener" data-dol title="Abrir no site do DOL">DOL ↗</a>` : ''}
         ${scoreTag(j)}${timelineTag(j)}
       </div>
@@ -195,6 +208,7 @@ H2B.jobs = (function () {
     if (f.states.length) chips.push({ k: 'location', l: `📍 ${f.states.length <= 4 ? f.states.join(', ') : f.states.slice(0, 3).join(', ') + ' +' + (f.states.length - 3)}` });
     f.years.forEach(y => chips.push({ k: 'year', v: y, l: `📅 ${y}` }));
     if (f.visa !== 'all') chips.push({ k: 'visa', l: f.visa });
+    if (f.origin !== 'all' && js.sheet !== 'disclosure') chips.push({ k: 'origin', l: ORIGIN_LABEL[f.origin] || f.origin });
     if (f.city) chips.push({ k: 'city', l: `🏙️ ${f.city}` });
     f.titles.forEach(t => chips.push({ k: 'title', v: t, l: t }));
     if (f.minWage !== '') chips.push({ k: 'minWage', l: `≥ $${f.minWage}/h` });
@@ -214,7 +228,7 @@ H2B.jobs = (function () {
   function removeFilter(k, v) {
     const f = js.filters;
     if (k === 'all') {
-      Object.assign(f, { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [] });
+      Object.assign(f, { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [], origin: 'all' });
       Object.keys(js.quick).forEach(q => { js.quick[q] = false; });
       js.sort = 'priority';
     }
@@ -223,6 +237,7 @@ H2B.jobs = (function () {
     else if (k === 'year') f.years = f.years.filter(x => x !== v);
     else if (k === 'sort') js.sort = 'priority';
     else if (k === 'visa') f.visa = 'all';
+    else if (k === 'origin') f.origin = 'all';
     else if (k === 'state') f.states = f.states.filter(x => x !== v);
     else if (k === 'city') f.city = '';
     else if (k === 'title') f.titles = f.titles.filter(x => x !== v);
@@ -254,11 +269,12 @@ H2B.jobs = (function () {
     else if (j.isEmailEligible || j.employer_email || j.attorney_email) sendBtn = `<button class="btn btn-primary" data-send="${j.id}"><i class="ti ti-send"></i> Enviar candidatura</button>`;
     else sendBtn = `<button class="btn btn-secondary" disabled title="Sem e-mail: candidatura por telefone ou site"><i class="ti ti-phone"></i> Ação manual</button>`;
 
+    const base = j.origin === 'disclosure' ? `<div class="alert al-blue" style="margin-bottom:10px"><i class="ti ti-folder-open"></i><div><b>Base DOL ${esc(baseYear(j))} — empregador recorrente.</b> Este pedido foi certificado para a temporada ${esc(baseYear(j))} e já encerrou; o empregador contrata pelo programa todo ano. A candidatura vai como interesse na <b>próxima temporada</b>, com o modelo de e-mail próprio da base.${(j.mergedCases || []).length ? `<div class="hint" style="margin-top:4px">Outros pedidos do mesmo empregador para este cargo, dobrados aqui: ${j.mergedCases.map(m => esc(m.case) + (m.start ? ' (' + esc(String(m.start).slice(0, 4)) + ')' : '')).join(', ')}</div>` : ''}</div></div>` : '';
     return `
-      <div class="jd-title">${esc(j.job_title)}</div>
+      <div class="jd-title" translate="yes">${esc(j.job_title)}</div>
       <div class="jd-co"><i class="ti ti-building"></i> ${esc(j.employer_name)} · ${esc(j.employer_city || '')}${j.employer_city ? ', ' : ''}${esc(US_STATES[j.employer_state] || j.employer_state || '')}</div>
       <div class="jd-tags">${visaTag(j.visa_type)}${scoreTag(j)}${timelineTag(j)}${j.fit_score !== null && j.fit_score !== undefined ? `<span class="tag">fit ${j.fit_score}</span>` : ''}${j.ats_score !== null && j.ats_score !== undefined ? `<span class="tag">ATS ${j.ats_score}</span>` : ''}<span class="tag">#${esc(j.job_order_id)}</span></div>
-      ${gate}
+      ${base}${gate}
       <div class="jd-acts">${sendBtn}
         <button class="btn btn-secondary" data-save2="${j.id}"><i class="ti ${j.is_saved ? 'ti-star-filled' : 'ti-star'}"></i> ${j.is_saved ? 'Salva' : 'Salvar'}</button>
         <button class="btn btn-secondary" data-discard="${j.id}"><i class="ti ti-trash"></i> Descartar</button>
@@ -280,9 +296,9 @@ H2B.jobs = (function () {
       ${warnings.length ? `<div class="jd-section-title">Atenção</div>${warnings.map(w => `<div class="alert al-amber" style="margin-bottom:6px"><i class="ti ti-alert-triangle"></i><div>${esc(w)}</div></div>`).join('')}` : ''}
       ${pkg ? `<div class="jd-section-title">Pacote preparado</div><div class="alert ${pkg.validation_status === 'PASSED' ? 'al-green' : 'al-red'}"><i class="ti ti-package"></i><div><b>${esc(pkg.validation_status)}</b>${pkg.requires_review ? ' · aguarda revisão' : ''}${j.queue_status ? ` · fila: ${esc(j.queue_status)}` : ''}</div></div>` : ''}
       <div class="jd-section-title">Descrição da vaga</div>
-      <div class="jd-desc">${esc(j.duties_description || 'Sem descrição no feed.')}</div>
-      ${j.special_requirements ? `<div class="jd-section-title">Requisitos</div><div class="jd-desc">${esc(j.special_requirements)}</div>` : ''}
-      ${(j.requirements || []).length ? `<div class="jd-section-title">Requisitos detectados</div><div class="jd-tags">${j.requirements.map(r => `<span class="tag ${r.status === 'MET' ? 'tg' : r.status === 'UNMET' ? 'tr' : 'ta'}">${esc(r.label || r.text || r)}</span>`).join('')}</div>` : ''}
+      <div class="jd-desc" translate="yes">${esc(j.duties_description || 'Sem descrição no feed.')}</div>
+      ${j.special_requirements ? `<div class="jd-section-title">Requisitos</div><div class="jd-desc" translate="yes">${esc(j.special_requirements)}</div>` : ''}
+      ${(j.requirements || []).length ? `<div class="jd-section-title">Requisitos detectados</div><div class="jd-tags" translate="yes">${j.requirements.map(r => `<span class="tag ${r.status === 'MET' ? 'tg' : r.status === 'UNMET' ? 'tr' : 'ta'}">${esc(r.label || r.text || r)}</span>`).join('')}</div>` : ''}
       ${(j.emailHistory || []).length ? `<div class="jd-section-title">Eventos de e-mail</div>${j.emailHistory.slice(0, 8).map(e => `<div style="font-size:12px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--border)"><b>${esc(e.event_type || e.event)}</b> · ${H2B.fmtDateTime(e.created_at)} — ${esc(e.detail || e.message || '')}</div>`).join('')}` : ''}
     `;
   }
@@ -364,6 +380,12 @@ H2B.jobs = (function () {
           <button class="cat-chip-sel ${f.visa === 'H-2A' ? 'sel' : ''}" data-visa="H-2A">🌾 H-2A (agro)</button>
           <button class="cat-chip-sel ${f.visa === 'H-2B' ? 'sel' : ''}" data-visa="H-2B">🏨 H-2B (não-agro)</button>
         </div></div>
+      ${(js.facets && js.facets.totals && Number(js.facets.totals.disclosure)) ? `<div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-database"></i> Origem</div>
+        <div class="cat-chips-row">
+          <button class="cat-chip-sel ${f.origin === 'all' ? 'sel' : ''}" data-origin="all">Todas</button>
+          <button class="cat-chip-sel ${f.origin === 'dol' ? 'sel' : ''}" data-origin="dol">📡 Vagas atuais do DOL <span style="opacity:.6">${js.facets.totals.current || 0}</span></button>
+          <button class="cat-chip-sel ${f.origin === 'disclosure' ? 'sel' : ''}" data-origin="disclosure">📂 Base DOL · temporadas passadas <span style="opacity:.6">${js.facets.totals.disclosure}</span></button>
+        </div><div class="hint" style="margin-top:6px">A base some da lista quando o mesmo empregador já tem o mesmo cargo entre as vagas atuais — a atual é a que vale.</div></div>` : ''}
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-map-pin"></i> Estados</div>
         <div class="hint">${f.states.length ? `${f.states.length} estado(s) marcado(s): ${esc(f.states.join(', '))}` : 'Todos os estados.'} A localização é um filtro à parte — <button class="filter-chip-x" id="mf-open-location" type="button" style="display:inline-flex">📍 abrir Localização</button></div></div>
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-building-community"></i> Cidade</div>
@@ -392,6 +414,7 @@ H2B.jobs = (function () {
     const body = $('#mf-body');
     body.onclick = (ev) => {
       const v = ev.target.closest('[data-visa]'); if (v) { $$('[data-visa]', body).forEach(b => b.classList.toggle('sel', b === v)); return; }
+      const so = ev.target.closest('[data-origin]'); if (so) { $$('[data-origin]', body).forEach(b => b.classList.toggle('sel', b === so)); return; }
       const m = ev.target.closest('[data-month]'); if (m) { m.classList.toggle('on'); return; }
       const y = ev.target.closest('[data-year]'); if (y) { y.classList.toggle('on'); return; }
       if (ev.target.closest('#mf-open-location')) { closeModal('filters-modal'); openLocation(); return; }
@@ -406,6 +429,7 @@ H2B.jobs = (function () {
   function applyFilters() {
     const f = js.filters;
     f.visa = ($('#mf-body [data-visa].sel') || {}).dataset ? $('#mf-body [data-visa].sel').dataset.visa : 'all';
+    const srcSel = $('#mf-body [data-origin].sel'); f.origin = srcSel ? srcSel.dataset.origin : 'all';
     f.city = $('#mf-city').value.trim();
     f.titles = $$('#mf-titles input:checked').map(i => i.dataset.title);
     f.minWage = $('#mf-wage').value.trim();
