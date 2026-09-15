@@ -567,7 +567,8 @@ function prepareApplicationPackage(jobId, options = {}) {
 
   // Só entra na fila se passou na validação.
   if (validation.status !== 'PASSED') {
-    db.prepare('DELETE FROM seasonal_email_queue WHERE package_id = ?').run(pkg.id);
+    // Só o que ainda não saiu: a linha SENT é registro do que foi enviado e fica.
+    db.prepare('DELETE FROM seasonal_email_queue WHERE package_id = ? AND status <> ?').run(pkg.id, QUEUE_STATUS.SENT);
     recordEvent(null, job.id, 'PACKAGE_INVALID', validation.blockingFailures.join(' | '));
     logSeasonal('package_invalid',
       `Pacote da ordem #${job.job_order_id} não passou na validação: ${validation.blockingFailures.join('; ')}`,
@@ -699,7 +700,8 @@ async function processQueue({ max = 10, packageId = null } = {}) {
   const nowIso = new Date().toISOString();
   const items = db.prepare(`
     SELECT q.*, j.job_order_id, j.employer_name, j.timeline_weight,
-           j.truck_classification, j.application_email, j.employer_email
+           j.truck_classification, j.application_email, j.employer_email,
+           j.job_title, j.visa_type, j.employer_state
     FROM seasonal_email_queue q
     JOIN seasonal_jobs j ON q.job_id = j.id
     WHERE (q.status = ? OR (q.status = ? AND (q.next_attempt_at IS NULL OR q.next_attempt_at <= ?)))
@@ -851,11 +853,15 @@ async function processQueue({ max = 10, packageId = null } = {}) {
       if (senderId) senders.recordSuccess(senderId);
 
       // 6. Registro permanente — é ele que sustenta o anti-duplicata (§62).
+      // O histórico guarda a sua própria cópia do que importa da vaga (título,
+      // visto, estado): ele precisa continuar legível mesmo que a vaga mude ou suma.
       db.prepare(`INSERT INTO seasonal_applications
-        (candidate_id, seasonal_job_id, job_order_id, recipient_email, employer_name, subject, content_sent, attachments_json)
-        VALUES (1,?,?,?,?,?,?,?)`)
+        (candidate_id, seasonal_job_id, job_order_id, recipient_email, employer_name, subject, content_sent, attachments_json,
+         job_title, visa_type, employer_state)
+        VALUES (1,?,?,?,?,?,?,?,?,?,?)`)
         .run(item.job_id, item.job_order_id, item.recipient_email, item.employer_name,
-             item.email_subject, item.email_body, item.attachments_json);
+             item.email_subject, item.email_body, item.attachments_json,
+             item.job_title || null, item.visa_type || null, item.employer_state || null);
 
       db.prepare('UPDATE seasonal_email_queue SET status = ?, sent_at = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ?')
         .run(QUEUE_STATUS.SENT, item.id);

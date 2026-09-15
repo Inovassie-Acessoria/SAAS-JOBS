@@ -344,13 +344,20 @@ function upsertJob(j, hash) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
             ?,?,1,?,?,?,?,?,?,?,?)
     ON CONFLICT(job_order_id) DO UPDATE SET
-      wage_rate = excluded.wage_rate, openings = excluded.openings,
-      start_date = excluded.start_date, end_date = excluded.end_date,
-      duties_description = excluded.duties_description,
-      special_requirements = excluded.special_requirements,
-      application_method = excluded.application_method,
-      application_email = excluded.application_email,
-      housing_provided = excluded.housing_provided,
+      -- Uma fonte mais pobre (o índice sem e-mail, o feed sem descrição) nunca
+      -- apaga o que outra já trouxe: vazio não substitui valor.
+      wage_rate = COALESCE(excluded.wage_rate, seasonal_jobs.wage_rate),
+      openings = COALESCE(excluded.openings, seasonal_jobs.openings),
+      start_date = COALESCE(excluded.start_date, seasonal_jobs.start_date),
+      end_date = COALESCE(excluded.end_date, seasonal_jobs.end_date),
+      duties_description = COALESCE(NULLIF(excluded.duties_description, ''), seasonal_jobs.duties_description),
+      special_requirements = COALESCE(NULLIF(excluded.special_requirements, ''), seasonal_jobs.special_requirements),
+      application_email = COALESCE(NULLIF(excluded.application_email, ''), seasonal_jobs.application_email),
+      application_method = CASE
+        WHEN excluded.application_method IS NULL OR excluded.application_method = 'UNKNOWN'
+          THEN COALESCE(seasonal_jobs.application_method, excluded.application_method)
+        ELSE excluded.application_method END,
+      housing_provided = MAX(COALESCE(seasonal_jobs.housing_provided, 0), COALESCE(excluded.housing_provided, 0)),
       content_hash = excluded.content_hash, raw_json = excluded.raw_json,
       -- A primeira aparição NUNCA é sobrescrita: é ela que diz de que safra a
       -- vaga é. A última avança a cada publicação em que a ordem reaparece, e
@@ -430,6 +437,33 @@ function resolveAts(cfg, userId) {
 // Consulta
 // ---------------------------------------------------------------------------
 
+/**
+ * Salário por hora equivalente. O DOL publica em unidades diferentes (Hour,
+ * Week, Bi-Weekly, Month) — sem converter, um pastor de gado a US$ 2.400/mês
+ * "ganha mais" que qualquer vaga por hora na ordenação por salário.
+ */
+const HOURLY_WAGE_SQL = `CASE
+    WHEN j.wage_rate IS NULL OR j.wage_rate <= 0 THEN NULL
+    -- "Hour" acima de US$ 200 é erro de cadastro no DOL (salário mensal de pastor
+    -- rotulado como hora): fica sem valor por hora em vez de liderar a ordenação.
+    WHEN j.wage_unit IS NULL OR lower(j.wage_unit) LIKE 'hour%' OR lower(j.wage_unit) LIKE 'hr%'
+      THEN CASE WHEN j.wage_rate > 200 THEN NULL ELSE j.wage_rate END
+    WHEN lower(j.wage_unit) LIKE 'week%' THEN j.wage_rate / COALESCE(NULLIF(j.weekly_hours, 0), 40.0)
+    WHEN lower(j.wage_unit) LIKE 'bi%' THEN j.wage_rate / (2.0 * COALESCE(NULLIF(j.weekly_hours, 0), 40.0))
+    WHEN lower(j.wage_unit) LIKE 'month%' THEN j.wage_rate / (COALESCE(NULLIF(j.weekly_hours, 0), 40.0) * 52.0 / 12.0)
+    WHEN lower(j.wage_unit) LIKE 'year%' OR lower(j.wage_unit) LIKE 'annual%' THEN j.wage_rate / (COALESCE(NULLIF(j.weekly_hours, 0), 40.0) * 52.0)
+    ELSE j.wage_rate END`;
+
+/**
+ * Camada pelo estado no DOL — a mesma da fila automática: ativa e ainda não
+ * iniciada (0), sem verificação (1), ativa mas já começou (2), inativa (3).
+ */
+const DOL_TIER_SQL = `CASE
+    WHEN j.dol_active = 1 AND (j.start_date IS NULL OR j.start_date >= date('now')) THEN 0
+    WHEN j.dol_active IS NULL THEN 1
+    WHEN j.dol_active = 1 THEN 2
+    ELSE 3 END`;
+
 function listJobs({ view = 'all', visaType = null, applicationMethod = null, only2027 = false,
                     state = null, minFit = null, limit = 200, offset = 0,
                     season = null, stillPublished = false,
@@ -437,7 +471,7 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
                     q = null, states = null, city = null, titles = null,
                     minWage = null, minOpenings = null, startMonths = null,
                     emailOnly = false, excludeApplied = false, housing = null, sort = null,
-                    dolActive = null } = {}) {
+                    dolActive = null, years = null } = {}) {
   const where = [];
   const params = [];
 
@@ -458,12 +492,18 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
     where.push(`(${titleList.map(() => 'j.job_title LIKE ?').join(' OR ')})`);
     params.push(...titleList.map(t => `%${t}%`));
   }
-  if (minWage !== null && minWage !== '' && !isNaN(Number(minWage))) { where.push('j.wage_rate >= ?'); params.push(Number(minWage)); }
+  if (minWage !== null && minWage !== '' && !isNaN(Number(minWage))) { where.push(`(${HOURLY_WAGE_SQL}) >= ?`); params.push(Number(minWage)); }
   if (minOpenings !== null && minOpenings !== '' && !isNaN(Number(minOpenings))) { where.push('j.openings >= ?'); params.push(Number(minOpenings)); }
   const months = splitList(startMonths).map(m => String(m).padStart(2, '0')).filter(m => /^(0[1-9]|1[0-2])$/.test(m));
   if (months.length) {
     where.push(`substr(j.start_date, 6, 2) IN (${months.map(() => '?').join(',')})`);
     params.push(...months);
+  }
+  // Ano de início da vaga (o "Jan 2026 / Jul 2025" do H2BApply, por ano).
+  const yearList = splitList(years).map(y => String(y).trim()).filter(y => /^[0-9]{4}$/.test(y));
+  if (yearList.length) {
+    where.push(`substr(j.start_date, 1, 4) IN (${yearList.map(() => '?').join(',')})`);
+    params.push(...yearList);
   }
   if (emailOnly) where.push("j.application_method = 'EMAIL' AND j.application_email IS NOT NULL AND j.application_email <> ''");
   if (excludeApplied) where.push('ap.id IS NULL');
@@ -495,8 +535,11 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
   if (only2027) { where.push("j.timeline_class = 'TARGET_2027'"); }
   if (minFit !== null && minFit !== '' && !isNaN(Number(minFit))) { where.push('m.fit_score >= ?'); params.push(Number(minFit)); }
 
+  const PRIORITY = 'm.queue_priority DESC NULLS LAST, j.timeline_weight DESC NULLS LAST, m.opportunity_score DESC NULLS LAST';
   const SORTS = {
-    wage: 'j.wage_rate DESC NULLS LAST',
+    // Ativas no DOL primeiro; dentro de cada camada, a prioridade de sempre.
+    active: `dol_tier ASC, ${PRIORITY}`,
+    wage: 'hourly_wage DESC NULLS LAST',
     start: 'j.start_date ASC NULLS LAST',
     openings: 'j.openings DESC NULLS LAST',
     recent: 'j.first_seen_feed DESC NULLS LAST, j.id DESC'
@@ -505,11 +548,13 @@ function listJobs({ view = 'all', visaType = null, applicationMethod = null, onl
               : view === 'saved' ? 's.saved_at DESC'
               : view === 'discarded' ? 'd.discarded_at DESC'
               : view === 'applied' ? 'ap.sent_at DESC'
-              : 'm.queue_priority DESC NULLS LAST, j.timeline_weight DESC NULLS LAST, m.opportunity_score DESC NULLS LAST';
+              // Prioridade padrão: quem ainda recruta no DOL vem antes, como na fila automática.
+              : `dol_tier ASC, ${PRIORITY}`;
 
   const rows = db.prepare(`
     SELECT j.*, m.fit_score, m.ats_score, m.opportunity_score, m.category, m.queue_priority,
            m.fit_components_json, m.fit_evidence_json, m.warnings_json, m.queue_breakdown_json,
+           (${HOURLY_WAGE_SQL}) AS hourly_wage, (${DOL_TIER_SQL}) AS dol_tier,
            a.concerns_json,
            p.id AS package_id, p.validation_status, p.requires_review,
            q.status AS queue_status,
@@ -541,7 +586,8 @@ function facets() {
   const states = db.prepare(`
     SELECT j.employer_state AS state, COUNT(*) AS total,
            SUM(CASE WHEN j.visa_type = 'H-2A' THEN 1 ELSE 0 END) AS h2a,
-           SUM(CASE WHEN j.visa_type = 'H-2B' THEN 1 ELSE 0 END) AS h2b
+           SUM(CASE WHEN j.visa_type = 'H-2B' THEN 1 ELSE 0 END) AS h2b,
+           SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS active
     FROM seasonal_jobs j
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
     WHERE d.id IS NULL AND j.employer_state IS NOT NULL AND j.employer_state <> ''
@@ -566,6 +612,14 @@ function facets() {
     LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
     WHERE d.id IS NULL AND length(j.start_date) >= 7
     GROUP BY month ORDER BY month`).all();
+  // Ano de início: o que o H2BApply chama de "Jan 2026 / Jul 2025", por ano.
+  const years = db.prepare(`
+    SELECT substr(j.start_date, 1, 4) AS year, COUNT(*) AS total,
+           SUM(CASE WHEN j.dol_active = 1 THEN 1 ELSE 0 END) AS active
+    FROM seasonal_jobs j
+    LEFT JOIN seasonal_discarded_jobs d ON j.id = d.job_id
+    WHERE d.id IS NULL AND length(j.start_date) >= 4
+    GROUP BY year ORDER BY year`).all();
   const totals = db.prepare(`
     SELECT COUNT(*) AS total,
            SUM(CASE WHEN j.visa_type = 'H-2A' THEN 1 ELSE 0 END) AS h2a,
@@ -582,7 +636,7 @@ function facets() {
       (SELECT COUNT(*) FROM seasonal_jobs j LEFT JOIN seasonal_discarded_jobs d ON j.id=d.job_id LEFT JOIN seasonal_matches m ON j.id=m.job_id WHERE d.id IS NULL AND m.opportunity_score >= 70) AS recommended,
       (SELECT COUNT(*) FROM seasonal_saved_jobs) AS saved,
       (SELECT COUNT(DISTINCT seasonal_job_id) FROM seasonal_applications) AS applied`).get();
-  return { states, cities, titles, months, totals: Object.assign(totals, counts) };
+  return { states, cities, titles, months, years, totals: Object.assign(totals, counts) };
 }
 
 /** Sugestões para a caixa de busca (F2.3): empresas, títulos, cidades, ordens. */
@@ -931,5 +985,7 @@ module.exports = {
   listJobs, getJob, saveJob, discardJob, facets, suggest, syncDolStatus,
   rankedCandidates, maybeAutoQueue,
   dashboard, logs, searchHistory, resolveAts, store,
-  seasons, seasonLabel
+  seasons, seasonLabel,
+  // exposto para os testes de reimportação e de filtros
+  upsertJob, HOURLY_WAGE_SQL, DOL_TIER_SQL
 };

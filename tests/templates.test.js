@@ -4,7 +4,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// Banco próprio: este teste apaga modelos e notificações — no banco real isso
+// já apagou os modelos do usuário uma vez.
 process.env.NODE_ENV = 'test';
+process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'h2a-templates-')), 'templates.db');
 const templates = require('../services/seasonalTemplateService');
 const ui = require('../services/seasonalUiService');
 const seasonal = require('../services/seasonalService');

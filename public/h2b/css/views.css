@@ -278,6 +278,14 @@
 .mf-state-chip button{background:none;border:none;color:inherit;cursor:pointer;font-weight:900;font-size:14px;line-height:1;padding:0}
 .mf-month{display:inline-flex;align-items:center;padding:6px 11px;border:1.5px solid var(--border2);border-radius:20px;background:var(--sf2);color:var(--t2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .14s}
 .mf-month.on{background:rgba(59,130,246,.1);color:#1d4ed8;border-color:rgba(59,130,246,.35)}
+/* Localização: estados por região, caixas de seleção */
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 12px}
+.loc-state{padding:4px 2px;font-weight:600}
+.loc-state input,.loc-region-cb{width:16px;height:16px;accent-color:var(--purple);flex-shrink:0}
+.loc-state .tag{font-weight:700}
+#btn-location.on{background:rgba(124,58,237,.18)!important}
+#loc-apply{flex:2 1 auto;min-width:0}
+@media (max-width:767px){#loc-apply{flex-basis:100%}}
 
 /* ══ NOTIFICAÇÕES ══ */
 .notif-card{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start}

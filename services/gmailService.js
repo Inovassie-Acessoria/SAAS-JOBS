@@ -9,11 +9,11 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
-const { db, logSeasonal, logCore } = require('../config/database');
+const { db, logSeasonal, logCore, uploadsRoot } = require('../config/database');
 const secretBox = require('../core/security/secretBox');
 
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/userinfo.email'];
-const TOKEN_DIR = path.join(__dirname, '..', 'private_uploads', '.secrets');
+const TOKEN_DIR = path.join(uploadsRoot, '.secrets');
 const TOKEN_PATH = path.join(TOKEN_DIR, 'gmail_token.json');
 
 function ensureTokenDir() {

@@ -53,6 +53,41 @@ tela de Configurações mostra o aviso com o que corrigir, e os botões "Conecta
 recusam antes de mandar o usuário ao Google — em vez do `redirect_uri_mismatch`
 sem explicação.
 
+## Onde os dados moram — e como não perdê-los
+
+Tudo que é histórico está no servidor, num único arquivo SQLite:
+candidaturas enviadas, eventos de e-mail, vagas salvas/descartadas, perfil,
+currículos (arquivos em `private_uploads/`), modelos, preferências de tela e
+as autorizações do Gmail (cifradas). O navegador guarda só o tema e o modo de
+tela — limpar cache ou dados do site não perde nada; no máximo pede login.
+
+Por padrão o banco fica em `data/h2a_system.db`, **dentro da pasta do app**.
+Na sua máquina isso serve. Em servidor, um deploy que recria a pasta (clone
+novo, "rebuild") apaga banco e currículos junto. Aponte para fora, uma vez:
+
+    DATA_DIR=/home/usuario/h2dream-dados
+    UPLOADS_DIR=/home/usuario/h2dream-dados/uploads
+    BACKUP_DIR=/home/usuario/h2dream-backups
+
+Depois, com o app parado, mova `data/h2a_system.db` (e os arquivos `-wal` e
+`-shm`, se existirem) e `private_uploads/` para lá e reinicie. O banner de
+boot e Configurações → **Dados e backup** mostram onde cada coisa está e avisam
+quando o banco ainda mora dentro do app.
+
+Backup: com a automação ligada, sai **um por dia** (`VACUUM INTO`, conferido
+ao final, últimos `BACKUP_KEEP` = 14 mantidos). Manual: `npm run backup` ou o
+botão "Fazer backup agora" no painel, que também permite **baixar** o arquivo
+e **exportar o histórico em JSON**. Um backup no mesmo disco não protege contra
+a perda do disco: baixe de vez em quando.
+
+O que não está no banco e também precisa de cópia: o `.env` — a
+`APP_ENCRYPTION_KEY` cifra as autorizações do Gmail; sem ela, é reautorizar
+cada conta (o histórico, esse continua legível).
+
+Testes nunca tocam o banco real: com `NODE_ENV=test` sem `DB_PATH`, o
+processo ganha um banco temporário; `DB_PATH` apontando para o banco real sob
+`NODE_ENV=test` é recusado.
+
 ## Arquitetura
 
 ```

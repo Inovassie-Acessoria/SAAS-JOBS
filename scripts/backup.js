@@ -2,7 +2,7 @@
 /**
  * Backup do banco, seguro com a aplicação rodando.
  *
- *   npm run backup                    grava em ./data/backups
+ *   npm run backup                    grava em BACKUP_DIR (padrão: ./data/backups)
  *   npm run backup -- /caminho/destino
  *
  * No VPS, com o Docker:
@@ -24,11 +24,11 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
-const { db } = require('../config/database');
+const { db, backupDir } = require('../config/database');
 
 const KEEP = parseInt(process.env.BACKUP_KEEP || '14', 10);
 
-const destDir = process.argv[2] || path.join(__dirname, '..', 'data', 'backups');
+const destDir = process.argv[2] || backupDir;
 if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true, mode: 0o700 });
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

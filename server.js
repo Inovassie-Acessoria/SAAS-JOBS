@@ -46,6 +46,7 @@ const scheduler = require('./services/scheduler');
 const awayReport = require('./services/awayReport');
 const ai = require('./services/aiService');
 const readiness = require('./services/readinessService');
+const backup = require('./services/backupService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -663,6 +664,7 @@ app.get('/api/seasonal/jobs', requireUser, wrap((req, res) => res.json({
     excludeApplied: req.query.excludeApplied === 'true' || req.query.excludeApplied === '1',
     housing: req.query.housing || null,
     dolActive: req.query.dolActive !== undefined ? req.query.dolActive : null,
+    years: req.query.years || null,
     sort: req.query.sort || null,
     season: req.query.season || null,
     stillPublished: req.query.stillPublished === 'true' || req.query.stillPublished === '1',
@@ -907,6 +909,30 @@ app.get('/api/core/scheduler/history', requireUser, wrap((req, res) => res.json(
 app.get('/api/core/away-report', requireUser, wrap((req, res) =>
   res.json(awayReport.build({ hours: Number(req.query.hours) || 24, userId: req.user.id }))));
 
+// --- Dados e backup: onde o histórico mora e como não perdê-lo ---
+
+app.get('/api/core/storage', requireUser, wrap((req, res) => res.json(backup.status())));
+
+app.post('/api/core/backup', requireUser, wrap((req, res) => {
+  const r = backup.run({ reason: 'manual' });
+  res.json({ backup: r, status: backup.status() });
+}));
+
+// Download de um backup pelo nome que o próprio serviço gerou — nada de caminho livre.
+app.get('/api/core/backups/:file', requireUser, wrap((req, res) => {
+  const file = backup.resolveFile(req.params.file);
+  if (!file) return res.status(404).json({ error: 'Backup não encontrado.' });
+  res.download(file, req.params.file);
+}));
+
+app.get('/api/core/export/history', requireUser, wrap((req, res) => {
+  const data = backup.exportHistory();
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="h2dream-historico-${stamp}.json"`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.send(JSON.stringify(data, null, 2));
+}));
+
 // --- Provedor de IA (§5, §59) ---
 
 app.get('/api/core/ai', requireUser, wrap((req, res) => res.json(ai.status())));
@@ -1042,6 +1068,12 @@ const server = app.listen(PORT, () => {
     .map(u => { try { return new URL(u).host; } catch (e) { return ''; } }).filter(Boolean))];
   console.log(`  domínio: ${creds.baseUrl} (${creds.baseUrlSource === 'env' ? 'APP_BASE_URL' : 'sem APP_BASE_URL — derivado de cada acesso'})`);
   console.log(`  Google:  ${creds.gmailRedirectUri}`);
+  // Onde os dados moram — é o que decide se um redeploy leva o histórico junto.
+  const st = backup.status();
+  console.log(`  dados:   ${st.db.path} (${(st.db.size / 1024 / 1024).toFixed(1)} MB) · backups em ${st.dir}${st.last ? ` · último há ${st.lastAgeHours} h` : ' · nenhum ainda'}`);
+  for (const w of st.warnings.filter(x => x.code !== 'NO_BACKUP' && x.code !== 'STALE')) {
+    console.log(`  ATENÇÃO: ${w.title}. ${w.detail}`);
+  }
   if (hosts.length > 1) {
     console.log(`  ATENÇÃO: as URIs do Google apontam para hosts diferentes (${hosts.join(', ')}). ` +
                 'Alinhe APP_BASE_URL, GOOGLE_REDIRECT_URI e GOOGLE_SIGNIN_REDIRECT_URI — ou rode "node scripts/changeDomain.js <dominio>".');

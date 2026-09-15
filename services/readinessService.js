@@ -421,9 +421,35 @@ function describeEnvironment() {
   };
 }
 
+/** Onde os dados moram e se existe backup — o que decide se o histórico sobrevive a um deploy. */
+function checkStorage() {
+  const out = [];
+  let st;
+  try { st = require('./backupService').status(); } catch (e) { return out; }
+  const inside = st.warnings.find(w => w.code === 'DB_INSIDE_APP');
+  out.push(item({
+    id: 'data_dir', capability: CAPABILITY.RUNTIME, title: 'Banco fora da pasta do aplicativo',
+    status: inside ? STATUS.DEGRADED : STATUS.OK,
+    severity: SEVERITY.DEGRADED,
+    observed: st.db.path,
+    impact: 'Se o deploy recriar a pasta do app, o banco (histórico, perfil, currículos, contas Gmail) vai junto.',
+    fix: inside ? 'Defina DATA_DIR e UPLOADS_DIR no .env apontando para uma pasta fora do app, mova data/ e private_uploads/ para lá e reinicie.' : null
+  }));
+  out.push(item({
+    id: 'db_backup', capability: CAPABILITY.RUNTIME, title: 'Backup recente do banco',
+    status: st.stale ? STATUS.DEGRADED : STATUS.OK,
+    severity: SEVERITY.DEGRADED,
+    observed: st.last ? `${st.count} arquivo(s), último há ${st.lastAgeHours} h em ${st.dir}` : 'nenhum backup ainda',
+    impact: 'Sem backup, um disco corrompido ou um deploy errado apaga o histórico sem volta.',
+    fix: st.stale ? 'Ligue a automação (o backup diário é uma das tarefas) ou clique em "Fazer backup agora" em Configurações → Dados e backup.' : null
+  }));
+  return out;
+}
+
 function check({ userId = 1 } = {}) {
   const items = [
     ...checkRuntime(),
+    ...checkStorage(),
     ...checkDiscovery(),
     ...checkProfileAndDocuments(userId),
     ...checkSending(),

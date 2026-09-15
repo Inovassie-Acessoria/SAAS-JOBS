@@ -1,5 +1,5 @@
 /* H2 Dream — service worker: casca offline + rede primeiro para a API. */
-const VERSION = 'h2dream-v2';
+const VERSION = 'h2dream-v3';
 const SHELL = ['/h2b/', '/h2b/index.html', '/h2b/css/base.css', '/h2b/css/layout.css', '/h2b/css/views.css',
   '/h2b/js/app.js', '/h2b/js/jobs.js', '/h2b/js/send.js', '/h2b/js/profile.js', '/h2b/js/views.js', '/js/api.js', '/h2b/icon.svg'];
 

@@ -198,12 +198,14 @@ H2B.views = (function () {
   async function renderSettings() {
     const el = $('#settings-body');
     el.innerHTML = '<div class="skel" style="height:120px"></div>';
-    let cfg, senders, creds, gmail, sched, discarded = [];
+    let cfg, senders, creds, gmail, sched, discarded = [], storage = null;
     try {
       [cfg, senders, creds, gmail, sched] = await Promise.all([API.seasonal.getConfig(), API.gmailSenders.list(), API.googleCredentials.status(), API.seasonal.gmailStatus(), API.core.scheduler()]);
       cfg = cfg.config; state.senders = senders; state.scheduler = sched;
       discarded = (await API.seasonal.listJobs({ view: 'discarded', limit: 50 })).jobs || [];
+      try { storage = await API.core.storage(); } catch (e) { storage = null; }
     } catch (e) { el.innerHTML = `<div class="empty-state"><p>${esc(e.message)}</p></div>`; return; }
+    const mb = (n) => `${(Number(n || 0) / 1024 / 1024).toFixed(1)} MB`;
     const mode = H2B.ls('h2b_screen_mode') || 'auto';
     const q = state.quota || {};
     el.innerHTML = `
@@ -278,6 +280,29 @@ H2B.views = (function () {
         </div>
       </div>
 
+      <div class="prof-card" style="margin-bottom:12px" id="st-storage-card">
+        <div class="prof-card-hd"><i class="ti ti-database"></i><span>Dados e backup</span>${storage ? `<span class="tag ${storage.stale ? 'ta' : 'tg'}" style="margin-left:auto">${storage.last ? `último backup há ${storage.lastAgeHours} h` : 'sem backup'}</span>` : ''}</div>
+        <div class="prof-card-bd">
+          ${!storage ? '<div class="hint">Não consegui ler o estado do armazenamento.</div>' : `
+          ${(storage.warnings || []).map(w => `<div class="alert ${w.code === 'DB_INSIDE_APP' ? 'al-red' : 'al-amber'}" style="margin-bottom:8px"><i class="ti ti-alert-triangle"></i><div><b>${esc(w.title)}</b> — ${esc(w.detail)}</div></div>`).join('')}
+          <div class="info-grid">
+            <div class="info-box"><div class="info-lbl">Candidaturas enviadas</div><div class="info-val">${storage.counts.applications ?? '—'}</div></div>
+            <div class="info-box"><div class="info-lbl">Eventos de e-mail</div><div class="info-val">${storage.counts.events ?? '—'}</div></div>
+            <div class="info-box"><div class="info-lbl">Vagas no acervo</div><div class="info-val">${storage.counts.jobs ?? '—'}</div></div>
+            <div class="info-box"><div class="info-lbl">Banco</div><div class="info-val">${mb(storage.db.size)}${storage.db.walSize ? ` <span class="hint">+ ${mb(storage.db.walSize)} pendentes</span>` : ''}</div></div>
+          </div>
+          <div class="hint" style="margin-top:8px;word-break:break-all"><b>Banco:</b> <code>${esc(storage.db.path)}</code><br><b>Currículos:</b> <code>${esc(storage.paths.uploadsRoot)}</code><br><b>Backups:</b> <code>${esc(storage.dir)}</code> · guarda os últimos ${storage.keep} · um por dia com a automação ligada</div>
+          <div class="hint" style="margin-top:6px">Tudo que é histórico mora no servidor, nesse banco. Limpar o cache ou os dados do site no navegador não apaga nada — no máximo pede login de novo. O que não está no banco: o <code>.env</code> (a chave que cifra as contas Gmail).</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn btn-primary btn-sm" id="st-backup-now"><i class="ti ti-device-floppy"></i> Fazer backup agora</button>
+            ${storage.last ? `<a class="btn btn-secondary btn-sm" href="/api/core/backups/${encodeURIComponent(storage.last.file)}"><i class="ti ti-download"></i> Baixar o último (${mb(storage.last.size)})</a>` : ''}
+            <a class="btn btn-secondary btn-sm" href="/api/core/export/history"><i class="ti ti-file-export"></i> Exportar histórico (JSON)</a>
+          </div>
+          ${storage.files.length ? `<details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Todos os backups (${storage.count})</summary>${storage.files.map(f => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(f.file)}</span><span class="hint">${fmtDateTime(f.createdAt)} · ${mb(f.size)}</span><a class="btn btn-secondary btn-xs" href="/api/core/backups/${encodeURIComponent(f.file)}">Baixar</a></div>`).join('')}</details>` : ''}
+          `}
+        </div>
+      </div>
+
       <div class="prof-card" style="margin-bottom:12px">
         <div class="prof-card-hd"><i class="ti ti-palette"></i><span>Aparência</span></div>
         <div class="prof-card-bd">
@@ -341,6 +366,11 @@ H2B.views = (function () {
     $('#st-theme').onclick = H2B.toggleTheme;
     $('#st-tour').onclick = () => H2B.profile.startTour();
     $('#st-ob').onclick = () => H2B.profile.startOnboarding();
+    const bk = $('#st-backup-now'); if (bk) bk.onclick = async () => {
+      bk.disabled = true; bk.innerHTML = '<span class="spin spin-sm"></span> Copiando…';
+      try { const r = await API.core.backupNow(); toast(`Backup ${r.backup.file} pronto: ${r.backup.applications} candidatura(s), ${r.backup.jobs} vaga(s), conferido.`, 'ok', 7000); renderSettings(); }
+      catch (e) { err(e); bk.disabled = false; bk.innerHTML = '<i class="ti ti-device-floppy"></i> Fazer backup agora'; }
+    };
     $('#st-hist-reset').onclick = () => H2B.warn({ icon: '🧹', title: 'Limpar o histórico da tela?', text: 'Os envios continuam registrados no servidor (a proteção contra duplicados usa isso). Só a lista visível recomeça do zero.', danger: 'Limpar visual', okLabel: 'Cancelar', onDanger: () => { H2B.savePrefs({ hist_reset_at: new Date().toISOString().replace('T', ' ').slice(0, 19) }); toast('Histórico limpo na tela'); } });
   }
 

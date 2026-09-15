@@ -47,7 +47,7 @@ const SELECTOR_TIMEOUT_MS = 20000;
 /** Tempo que a janela fica aberta esperando você fazer login. */
 const LOGIN_WAIT_MS = 180000;
 
-const PROFILE_ROOT = path.join(__dirname, '..', '..', 'private_uploads', '.secrets', 'browser');
+const PROFILE_ROOT = path.join(require('../../config/database').uploadsRoot, '.secrets', 'browser');
 
 // ---------------------------------------------------------------------------
 // Localizar o Chrome instalado

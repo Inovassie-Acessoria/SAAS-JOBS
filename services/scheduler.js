@@ -175,6 +175,21 @@ const TASKS = {
     }
   },
 
+  db_backup: {
+    label: 'Backup diário do banco',
+    defaultIntervalMinutes: 1440,
+    description: 'Copia íntegra do banco (VACUUM INTO), conferida ao final; mantém os últimos N arquivos.',
+    async handler() {
+      const backup = require('./backupService');
+      const r = backup.run({ reason: 'scheduled' });
+      return {
+        status: 'OK',
+        message: `Backup ${r.file} (${(r.size / 1024 / 1024).toFixed(1)} MB): ${r.jobs} vaga(s), ${r.applications} candidatura(s); ${r.removed.length} antigo(s) removido(s).`,
+        metrics: { file: r.file, size: r.size, jobs: r.jobs, applications: r.applications, removed: r.removed.length }
+      };
+    }
+  },
+
   audit_retention: {
     label: 'Limpeza da trilha de auditoria',
     defaultIntervalMinutes: 1440,
@@ -212,6 +227,12 @@ function ensureTasks() {
                           VALUES (?,?,?,0)
                           ON CONFLICT(id) DO UPDATE SET label = excluded.label`);
   for (const [id, t] of Object.entries(TASKS)) ins.run(id, t.label, t.defaultIntervalMinutes);
+
+  // O backup diário acompanha a automação: quem já a tinha ligada antes de a
+  // tarefa existir ganha o backup ligado sem precisar desligar e ligar de novo.
+  if (isEnabled()) {
+    db.prepare("UPDATE core_scheduler_jobs SET enabled = 1 WHERE id = 'db_backup' AND last_run_at IS NULL AND enabled = 0").run();
+  }
 
   // Remove tarefas que não existem mais no código.
   const known = Object.keys(TASKS);
@@ -412,6 +433,7 @@ function setEnabled(enabled) {
     setTaskConfig('seasonal_dispatch', { enabled: true, intervalMinutes: cfg.dispatch_interval_minutes || 60 });
     setTaskConfig('seasonal_stale_check', { enabled: true });
     setTaskConfig('audit_retention', { enabled: true });
+    setTaskConfig('db_backup', { enabled: true });
   }
 
   logCore('scheduler', enabled ? 'enabled' : 'disabled',

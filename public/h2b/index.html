@@ -188,17 +188,20 @@
           </div>
           <div class="filters-row">
             <button class="fbtn filters-main" id="btn-filters"><i class="ti ti-adjustments-horizontal"></i> Filtros <span class="filter-badge" id="filter-badge">0</span></button>
+            <button class="fbtn filters-main" id="btn-location" title="Estados marcados aparecem; desmarcados somem"><i class="ti ti-map-pin"></i> Localização <span class="filter-badge" id="location-badge">0</span></button>
+            <button class="fbtn" id="f-dolactive" data-f="dolActive"><i class="ti ti-circle-check"></i> Ativas no DOL</button>
+            <select class="fsel" id="f-year" title="Ano de início da vaga"><option value="">Todos os anos</option></select>
+            <select class="fsel" id="f-sort" title="Ordenação — combina com qualquer filtro">
+              <option value="priority">Prioridade</option>
+              <option value="active">✅ Ativas primeiro</option>
+              <option value="wage">💰 Maior salário (por hora)</option>
+              <option value="start">🗓️ Início mais próximo</option>
+              <option value="openings">👥 Mais vagas</option>
+              <option value="recent">🆕 Mais recentes</option>
+            </select>
             <button class="fbtn" id="f-email" data-f="emailOnly"><i class="ti ti-mail"></i> Só com e-mail</button>
             <button class="fbtn" id="f-notapplied" data-f="excludeApplied"><i class="ti ti-eye-off"></i> Ocultar enviadas</button>
             <button class="fbtn" id="f-housing" data-f="housing"><i class="ti ti-home"></i> Com moradia</button>
-            <button class="fbtn" id="f-dolactive" data-f="dolActive"><i class="ti ti-circle-check"></i> Ativas no DOL</button>
-            <select class="fsel" id="f-sort">
-              <option value="priority">Prioridade</option>
-              <option value="wage">Maior salário</option>
-              <option value="start">Início mais próximo</option>
-              <option value="openings">Mais vagas</option>
-              <option value="recent">Mais recentes</option>
-            </select>
           </div>
           <div id="active-filters" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px"></div>
         </div>
@@ -414,6 +417,16 @@
     <div class="mhdr"><div><div class="mttl">Filtros</div><div class="msub" id="mf-sub">Refine as vagas que aparecem na lista.</div></div><button class="mx" data-close="filters-modal"><i class="ti ti-x"></i></button></div>
     <div class="mbody" id="mf-body"></div>
     <div class="mfoot"><button class="btn btn-secondary" id="mf-clear">Limpar</button><button class="btn btn-primary" id="mf-apply" style="flex:1">Aplicar filtros</button></div>
+  </div>
+</div>
+
+<!-- ═══════════ LOCALIZAÇÃO (estados por região) ═══════════ -->
+<div class="overlay" id="location-modal">
+  <div class="modal" style="max-width:720px">
+    <div class="mhandle"></div>
+    <div class="mhdr"><div><div class="mttl">Localização</div><div class="msub">Estado marcado aparece; desmarcado some. Marque quantos quiser — combina com os outros filtros e com a ordenação.</div></div><button class="mx" data-close="location-modal"><i class="ti ti-x"></i></button></div>
+    <div class="mbody" id="loc-body"></div>
+    <div class="mfoot" style="flex-wrap:wrap"><button class="btn btn-secondary" id="loc-none" style="flex:1">Desmarcar todos</button><button class="btn btn-secondary" id="loc-all" style="flex:1">Marcar todos</button><button class="btn btn-primary" id="loc-apply">Aplicar</button></div>
   </div>
 </div>
 

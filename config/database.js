@@ -19,19 +19,67 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
-const dbDir = path.join(__dirname, '..', 'data');
+const os = require('os');
+
+const appRoot = path.resolve(__dirname, '..');
+
+/**
+ * Onde os dados moram. Por padrão dentro da pasta do app (data/ e
+ * private_uploads/), o que serve para a máquina do usuário. Em servidor,
+ * DATA_DIR e UPLOADS_DIR devem apontar para FORA da pasta do app: um deploy
+ * que recria a pasta (clone novo, "rebuild") apagaria o banco junto.
+ */
+const dbDir = path.resolve(process.env.DATA_DIR || path.join(appRoot, 'data'));
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 // Uploads ficam FORA de qualquer diretório servido estaticamente (spec §54).
-const uploadsRoot = path.join(__dirname, '..', 'private_uploads');
+const uploadsRoot = path.resolve(process.env.UPLOADS_DIR || path.join(appRoot, 'private_uploads'));
 const uploadsDirs = ['resumes', 'documents', 'portfolio'].map(d => path.join(uploadsRoot, d));
 for (const dir of uploadsDirs) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-// DB_PATH permite apontar para um banco isolado nos testes, sem tocar no de produção.
-const dbPath = process.env.DB_PATH || path.join(dbDir, 'h2a_system.db');
+const defaultDbPath = path.join(dbDir, 'h2a_system.db');
+
+/**
+ * Testes NUNCA abrem o banco real. Um teste que esquece o DB_PATH ganha um
+ * banco temporário, e um DB_PATH que aponte para o banco real sob NODE_ENV=test
+ * é recusado — `npm test` na máquina de produção já apagou modelos e
+ * notificações uma vez; não acontece de novo.
+ */
+function resolveDbPath() {
+  const wanted = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : null;
+  if (process.env.NODE_ENV === 'test') {
+    if (!wanted) {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'h2a-test-'));
+      const p = path.join(tmp, 'test.db');
+      process.env.DB_PATH = p;
+      return p;
+    }
+    if (wanted === path.resolve(defaultDbPath)) {
+      throw new Error(`Recusado: NODE_ENV=test com DB_PATH apontando para o banco real (${wanted}).`);
+    }
+    return wanted;
+  }
+  return wanted || defaultDbPath;
+}
+
+const dbPath = resolveDbPath();
 const db = new DatabaseSync(dbPath);
+
+// Os backups ficam ao lado do banco que está aberto — um teste com DB_PATH
+// temporário faz backup no temporário, nunca na pasta de backups real.
+const backupDir = path.resolve(process.env.BACKUP_DIR || path.join(path.dirname(dbPath), 'backups'));
+
+/** Tudo que descreve onde os dados estão — para o painel "Dados e backup" e o banner. */
+function storagePaths() {
+  const inside = (p) => path.resolve(p).toLowerCase().startsWith(appRoot.toLowerCase() + path.sep);
+  return {
+    appRoot, dbPath, dataDir: dbDir, uploadsRoot, backupDir,
+    dbInsideApp: inside(dbPath), uploadsInsideApp: inside(uploadsRoot), backupsInsideApp: inside(backupDir),
+    fromEnv: { DATA_DIR: Boolean(process.env.DATA_DIR), UPLOADS_DIR: Boolean(process.env.UPLOADS_DIR), BACKUP_DIR: Boolean(process.env.BACKUP_DIR) }
+  };
+}
 
 try { db.exec('PRAGMA journal_mode = WAL;'); } catch (e) {}
 try { db.exec('PRAGMA foreign_keys = ON;'); } catch (e) {}
@@ -578,7 +626,8 @@ function migrateDolLinks() {
  * ainda tinha o antigo 300 fixo passa para automático.
  */
 function migrateDailyLimitAuto() {
-  const KEY = 'daily_limit_auto_v1';
+  // v2: a v1 não zerava a trava do sistema (max_seasonal_emails_per_day); roda de novo, idempotente.
+  const KEY = 'daily_limit_auto_v2';
   try {
     if (db.prepare('SELECT value FROM core_system_settings WHERE key = ?').get(KEY)) return { migrated: false };
     const r = db.prepare('UPDATE seasonal_config SET daily_email_limit = 0 WHERE daily_email_limit = 300').run();
@@ -1790,6 +1839,18 @@ function initDatabase() {
   addColumnIfMissing('seasonal_jobs', 'dol_checked_at', 'TEXT');
   // Um e-mail por destinatário a cada N dias (0 = desligado).
   addColumnIfMissing('seasonal_config', 'recipient_cooldown_days', 'INTEGER DEFAULT 30');
+  // O histórico de envios carrega a própria cópia de título/visto/estado da
+  // vaga: continua legível e exportável mesmo que a vaga mude ou suma.
+  addColumnIfMissing('seasonal_applications', 'job_title', 'TEXT');
+  addColumnIfMissing('seasonal_applications', 'visa_type', 'TEXT');
+  addColumnIfMissing('seasonal_applications', 'employer_state', 'TEXT');
+  try {
+    db.exec(`UPDATE seasonal_applications SET
+               job_title = (SELECT j.job_title FROM seasonal_jobs j WHERE j.id = seasonal_applications.seasonal_job_id),
+               visa_type = (SELECT j.visa_type FROM seasonal_jobs j WHERE j.id = seasonal_applications.seasonal_job_id),
+               employer_state = (SELECT j.employer_state FROM seasonal_jobs j WHERE j.id = seasonal_applications.seasonal_job_id)
+             WHERE job_title IS NULL;`);
+  } catch (e) { /* preenchimento é conveniência */ }
   result.dailyLimitAuto = migrateDailyLimitAuto();
   result.dolLinks = migrateDolLinks();
   try {
@@ -1866,9 +1927,12 @@ const migration = initDatabase();
 
 module.exports = {
   db,
+  dbPath,
   initDatabase,
   migration,
   uploadsRoot,
+  backupDir,
+  storagePaths,
   SCHEMA_VERSION,
   logCore, logGupy, logIndeed, logSeasonal,
   tableExists, columnsOf

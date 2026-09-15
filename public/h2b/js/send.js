@@ -268,10 +268,10 @@ H2B.send = (function () {
       const n = ev.target.closest('[data-next]'); if (n) { collect(); as.step = Number(n.dataset.next); persistWizard(); renderWizard(); body.scrollTop = 0; return; }
       const t = ev.target.closest('[data-title]'); if (t) { const x = t.dataset.title; as.titles = as.titles.includes(x) ? as.titles.filter(y => y !== x) : as.titles.concat(x); t.classList.toggle('sel'); persistWizard(); return; }
       const s = ev.target.closest('[data-state]'); if (s) { const x = s.dataset.state; as.states = as.states.includes(x) ? as.states.filter(y => y !== x) : as.states.concat(x); s.classList.toggle('sel'); persistWizard(); return; }
-      const cv = ev.target.closest('[data-cv]'); if (cv) { as.resumeId = cv.dataset.cv === 'auto' ? null : Number(cv.dataset.cv); $('#aw-cvs .cv-slot').forEach(x => x.classList.toggle('sel', x === cv)); persistWizard(); return; }
-      const p = ev.target.closest('[data-pace]'); if (p) { as.pace = Number(p.dataset.pace); $('[data-pace]', body).forEach(x => x.classList.toggle('sel', x === p)); persistWizard(); return; }
-      const r = ev.target.closest('[data-rigor]'); if (r) { as.rigor = r.dataset.rigor; $('[data-rigor]', body).forEach(x => x.classList.toggle('sel', x === r)); $('#aw-rigor-hint').textContent = RIGOR[as.rigor].hint; persistWizard(); return; }
-      const rv = ev.target.closest('[data-review]'); if (rv) { as.review = rv.dataset.review; $('[data-review]', body).forEach(x => x.classList.toggle('sel', x === rv)); persistWizard(); return; }
+      const cv = ev.target.closest('[data-cv]'); if (cv) { as.resumeId = cv.dataset.cv === 'auto' ? null : Number(cv.dataset.cv); $$('#aw-cvs .cv-slot').forEach(x => x.classList.toggle('sel', x === cv)); persistWizard(); return; }
+      const p = ev.target.closest('[data-pace]'); if (p) { as.pace = Number(p.dataset.pace); $$('[data-pace]', body).forEach(x => x.classList.toggle('sel', x === p)); persistWizard(); return; }
+      const r = ev.target.closest('[data-rigor]'); if (r) { as.rigor = r.dataset.rigor; $$('[data-rigor]', body).forEach(x => x.classList.toggle('sel', x === r)); $('#aw-rigor-hint').textContent = RIGOR[as.rigor].hint; persistWizard(); return; }
+      const rv = ev.target.closest('[data-review]'); if (rv) { as.review = rv.dataset.review; $$('[data-review]', body).forEach(x => x.classList.toggle('sel', x === rv)); persistWizard(); return; }
       if (ev.target.closest('#aw-titles-clear')) { as.titles = []; renderWizard(); return; }
       if (ev.target.closest('#aw-states-clear')) { as.states = []; renderWizard(); return; }
       if (ev.target.closest('[data-goto-settings]')) { ev.preventDefault(); closeAuto(); H2B.sv('settings'); return; }

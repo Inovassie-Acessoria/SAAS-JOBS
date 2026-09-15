@@ -159,6 +159,9 @@ const API = {
     agentRuns: (params) => request(`/api/core/agent-runs${qs(params)}`),
     agentsSelfCheck: () => request('/api/core/agents/self-check'),
     readiness: () => request('/api/core/readiness'),
+    // --- Dados e backup ---
+    storage: () => request('/api/core/storage'),
+    backupNow: () => request('/api/core/backup', { method: 'POST' }),
     ai: () => request('/api/core/ai'),
     saveAi: (body) => request('/api/core/ai', { method: 'PUT', body }),
     testAi: () => request('/api/core/ai/test', { method: 'POST' })

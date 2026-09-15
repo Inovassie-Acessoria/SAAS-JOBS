@@ -12,16 +12,26 @@ H2B.jobs = (function () {
     HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',
     MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',
     NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
-    SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Washington DC',PR:'Puerto Rico'
+    SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Washington DC',PR:'Puerto Rico',GU:'Guam',VI:'Ilhas Virgens',AS:'Samoa Americana',MP:'Marianas do Norte'
   };
   const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  /** Regiões do Census Bureau dos EUA — é assim que o americano agrupa os estados. */
+  const REGIONS = [
+    { id: 'northeast', label: 'Nordeste', icon: '🍁', states: ['CT','ME','MA','NH','RI','VT','NJ','NY','PA'] },
+    { id: 'southeast', label: 'Sudeste', icon: '🌴', states: ['DE','DC','FL','GA','MD','NC','SC','VA','WV','AL','KY','MS','TN','AR','LA'] },
+    { id: 'midwest', label: 'Meio-Oeste', icon: '🌽', states: ['IL','IN','MI','OH','WI','IA','KS','MN','MO','NE','ND','SD'] },
+    { id: 'southwest', label: 'Sudoeste', icon: '🌵', states: ['AZ','NM','OK','TX'] },
+    { id: 'west', label: 'Oeste', icon: '🏔️', states: ['CO','ID','MT','NV','UT','WY','AK','CA','HI','OR','WA'] },
+    { id: 'territories', label: 'Territórios', icon: '🏝️', states: ['PR','GU','VI','AS','MP'] }
+  ];
 
   const js = {
     sheet: 'all',
     q: '',
     quick: { emailOnly: false, excludeApplied: false, housing: false, dolActive: false },
     sort: 'priority',
-    filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all' },
+    // states = estados MARCADOS na Localização (vazio = todos); years = anos de início.
+    filters: { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [] },
     jobs: [],
     offset: 0,
     done: false,
@@ -34,6 +44,8 @@ H2B.jobs = (function () {
     const f = state.prefs.filters;
     if (f && typeof f === 'object') {
       Object.assign(js.filters, f.filters || {});
+      if (!Array.isArray(js.filters.years)) js.filters.years = [];
+      if (!Array.isArray(js.filters.states)) js.filters.states = [];
       Object.assign(js.quick, f.quick || {});
       js.sort = f.sort || js.sort;
     }
@@ -60,13 +72,17 @@ H2B.jobs = (function () {
     if (js.filters.minWage !== '' && js.filters.minWage !== null) p.minWage = js.filters.minWage;
     if (js.filters.minOpenings !== '' && js.filters.minOpenings !== null) p.minOpenings = js.filters.minOpenings;
     if (js.filters.startMonths.length) p.startMonths = js.filters.startMonths.join(',');
+    if (js.filters.years.length) p.years = js.filters.years.join(',');
     return p;
   }
 
   function activeFilterCount() {
     const f = js.filters;
-    return (f.states.length ? 1 : 0) + (f.city ? 1 : 0) + (f.titles.length ? 1 : 0) + (f.minWage !== '' ? 1 : 0)
-         + (f.minOpenings !== '' ? 1 : 0) + (f.startMonths.length ? 1 : 0) + (f.visa !== 'all' ? 1 : 0);
+    return (f.city ? 1 : 0) + (f.titles.length ? 1 : 0) + (f.minWage !== '' ? 1 : 0)
+         + (f.minOpenings !== '' ? 1 : 0) + (f.startMonths.length ? 1 : 0) + (f.visa !== 'all' ? 1 : 0) + (f.years.length ? 1 : 0);
+  }
+  function anyFilterActive() {
+    return activeFilterCount() > 0 || js.filters.states.length > 0 || Object.values(js.quick).some(Boolean);
   }
 
   async function load(reset) {
@@ -95,7 +111,19 @@ H2B.jobs = (function () {
       $('#cnt-saved').textContent = t.saved || 0;
       $('#cnt-applied').textContent = t.applied || 0;
       $('#jlist-feed').textContent = (t.lastFeed ? `feed ${H2B.fmtUSDate(t.lastFeed)}` : 'sem feed') + (t.dolActive ? ` · ${t.dolActive} ativas no DOL` : '');
+      renderYearSelect();
     } catch (e) { /* silencioso */ }
+  }
+  /** Atalho de ano na barra: um ano por vez aqui; vários pelo painel de filtros. */
+  function renderYearSelect() {
+    const sel = $('#f-year');
+    const years = ((js.facets && js.facets.years) || []).filter(y => y.year && Number(y.total) > 0);
+    const cur = js.filters.years;
+    let html = '<option value="">Todos os anos</option>';
+    html += years.map(y => `<option value="${esc(y.year)}">${esc(y.year)} (${y.total}${y.active ? ` · ${y.active} ativas` : ''})</option>`).join('');
+    if (cur.length > 1) html += `<option value="__multi">${esc(cur.join(', '))}</option>`;
+    sel.innerHTML = html;
+    sel.value = cur.length > 1 ? '__multi' : (cur[0] || '');
   }
 
   // ------------------------------------------------------------ lista
@@ -136,7 +164,7 @@ H2B.jobs = (function () {
       <div class="jcard-cat-row">${visaTag(j.visa_type)}${cat ? `<span class="jcard-cat-badge">${esc(cat)}</span>` : ''}</div>
       <div class="jcard-co"><i class="ti ti-building"></i> ${esc(j.employer_name)} · ${esc(j.employer_city || '')}${j.employer_city ? ', ' : ''}${esc(j.employer_state || '')}</div>
       <div class="jcard-tags">
-        <span class="tag tg">${money(j.wage_rate, j.wage_unit)}</span>
+        <span class="tag tg">${money(j.wage_rate, j.wage_unit)}${j.hourly_wage && j.wage_unit && String(j.wage_unit).toLowerCase() !== 'hour' ? ` ≈ ${Number(j.hourly_wage).toFixed(2)}/h` : ''}</span>
         ${j.openings ? `<span class="tag">${j.openings} vaga${j.openings > 1 ? 's' : ''}</span>` : ''}
         ${j.start_date ? `<span class="tag">📅 ${fmtUSDate(j.start_date)}</span>` : ''}
         ${j.housing_provided ? '<span class="tag tb">🏠 moradia</span>' : ''}
@@ -152,31 +180,48 @@ H2B.jobs = (function () {
     $('#jcount').textContent = `${n}${js.done ? '' : '+'} vaga${n === 1 ? '' : 's'}`;
     $('#jlist-more').classList.toggle('gone', js.done);
     if (!n) {
-      $('#jlist').innerHTML = `<div class="empty-state"><i class="ti ti-mood-empty"></i><p>Nenhuma vaga aqui</p><small>${js.q || activeFilterCount() ? 'Tente afrouxar a busca ou os filtros.' : 'Importe o feed do DOL em Configurações.'}</small></div>`;
+      $('#jlist').innerHTML = `<div class="empty-state"><i class="ti ti-mood-empty"></i><p>Nenhuma vaga aqui</p><small>${js.q || anyFilterActive() ? 'Tente afrouxar a busca, os filtros ou a localização.' : 'Importe o feed do DOL em Configurações.'}</small></div>`;
       return;
     }
     $('#jlist').innerHTML = js.jobs.map(card).join('');
     renderActiveFilters();
   }
+  const SORT_LABEL = { active: '✅ ativas primeiro', wage: '💰 maior salário', start: '🗓️ início mais próximo', openings: '👥 mais vagas', recent: '🆕 mais recentes' };
+  const QUICK_LABEL = { dolActive: '✅ ativas no DOL', emailOnly: '✉️ só com e-mail', excludeApplied: '🙈 ocultar enviadas', housing: '🏠 com moradia' };
   function renderActiveFilters() {
     const chips = [];
     const f = js.filters;
+    Object.keys(QUICK_LABEL).forEach(k => { if (js.quick[k]) chips.push({ k: 'quick', v: k, l: QUICK_LABEL[k] }); });
+    if (f.states.length) chips.push({ k: 'location', l: `📍 ${f.states.length <= 4 ? f.states.join(', ') : f.states.slice(0, 3).join(', ') + ' +' + (f.states.length - 3)}` });
+    f.years.forEach(y => chips.push({ k: 'year', v: y, l: `📅 ${y}` }));
     if (f.visa !== 'all') chips.push({ k: 'visa', l: f.visa });
-    f.states.forEach(s => chips.push({ k: 'state', v: s, l: s }));
-    if (f.city) chips.push({ k: 'city', l: `📍 ${f.city}` });
+    if (f.city) chips.push({ k: 'city', l: `🏙️ ${f.city}` });
     f.titles.forEach(t => chips.push({ k: 'title', v: t, l: t }));
     if (f.minWage !== '') chips.push({ k: 'minWage', l: `≥ $${f.minWage}/h` });
     if (f.minOpenings !== '') chips.push({ k: 'minOpenings', l: `≥ ${f.minOpenings} vagas` });
     f.startMonths.forEach(m => chips.push({ k: 'month', v: m, l: `início ${MONTHS[Number(m) - 1]}` }));
+    if (js.sort !== 'priority' && SORT_LABEL[js.sort]) chips.push({ k: 'sort', l: `↕️ ${SORT_LABEL[js.sort]}` });
     const n = activeFilterCount();
     const badge = $('#filter-badge'); badge.textContent = n; badge.style.display = n ? 'inline-block' : 'none';
+    const lb = $('#location-badge'); lb.textContent = f.states.length; lb.style.display = f.states.length ? 'inline-block' : 'none';
+    $('#btn-location').classList.toggle('on', f.states.length > 0);
     $('#active-filters').innerHTML = chips.map(c => `<button class="filter-chip-x" data-fk="${c.k}" data-fv="${esc(c.v || '')}">${esc(c.l)} <b>×</b></button>`).join('')
       + (chips.length > 1 ? `<button class="filter-chip-x" data-fk="all" style="background:var(--sf3);border-color:var(--border2);color:var(--t2)">limpar tudo</button>` : '');
     $$('#f-email, #f-notapplied, #f-housing, #f-dolactive').forEach(b => b.classList.toggle('on', Boolean(js.quick[b.dataset.f])));
+    $('#f-sort').value = js.sort;
+    renderYearSelect();
   }
   function removeFilter(k, v) {
     const f = js.filters;
-    if (k === 'all') Object.assign(f, { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all' });
+    if (k === 'all') {
+      Object.assign(f, { states: [], city: '', titles: [], minWage: '', minOpenings: '', startMonths: [], visa: 'all', years: [] });
+      Object.keys(js.quick).forEach(q => { js.quick[q] = false; });
+      js.sort = 'priority';
+    }
+    else if (k === 'quick') js.quick[v] = false;
+    else if (k === 'location') f.states = [];
+    else if (k === 'year') f.years = f.years.filter(x => x !== v);
+    else if (k === 'sort') js.sort = 'priority';
     else if (k === 'visa') f.visa = 'all';
     else if (k === 'state') f.states = f.states.filter(x => x !== v);
     else if (k === 'city') f.city = '';
@@ -310,7 +355,6 @@ H2B.jobs = (function () {
   function openFilters() {
     const f = js.filters;
     const fac = js.facets || { states: [], titles: [], months: [] };
-    const stateOpts = (fac.states || []).map(s => `<option value="${s.state}">${esc(US_STATES[s.state] || s.state)} (${s.total})</option>`).join('');
     const titleOpts = (fac.titles || []).map(t => `<label class="mf-check-row"><input type="checkbox" data-title="${esc(t.title)}" ${f.titles.includes(t.title) ? 'checked' : ''}> <span style="flex:1;font-weight:600">${esc(t.title)}</span><span class="tag">${t.total}</span></label>`).join('');
     const monthCount = Object.fromEntries((fac.months || []).map(m => [m.month, m.total]));
     $('#mf-body').innerHTML = `
@@ -321,8 +365,7 @@ H2B.jobs = (function () {
           <button class="cat-chip-sel ${f.visa === 'H-2B' ? 'sel' : ''}" data-visa="H-2B">🏨 H-2B (não-agro)</button>
         </div></div>
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-map-pin"></i> Estados</div>
-        <div style="display:flex;gap:6px"><select class="mf-select" id="mf-state-sel"><option value="">Adicionar estado…</option>${stateOpts}</select></div>
-        <div id="mf-states" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">${f.states.map(s => `<span class="mf-state-chip">${s} <button data-rm-state="${s}">×</button></span>`).join('')}</div></div>
+        <div class="hint">${f.states.length ? `${f.states.length} estado(s) marcado(s): ${esc(f.states.join(', '))}` : 'Todos os estados.'} A localização é um filtro à parte — <button class="filter-chip-x" id="mf-open-location" type="button" style="display:inline-flex">📍 abrir Localização</button></div></div>
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-building-community"></i> Cidade</div>
         <input class="mf-input" id="mf-city" placeholder="Ex.: Fresno" value="${esc(f.city)}"></div>
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-briefcase"></i> Cargos <span class="tag" id="mf-title-cnt">${f.titles.length}</span></div>
@@ -332,19 +375,26 @@ H2B.jobs = (function () {
         <div class="mf-sec"><div class="mf-sec-title"><i class="ti ti-cash"></i> Salário mín. ($/h)</div><input class="mf-input" id="mf-wage" type="number" step="0.5" min="0" value="${esc(f.minWage)}" placeholder="Ex.: 16"></div>
         <div class="mf-sec"><div class="mf-sec-title"><i class="ti ti-users"></i> Mín. de vagas</div><input class="mf-input" id="mf-open" type="number" min="1" value="${esc(f.minOpenings)}" placeholder="Ex.: 5"></div>
       </div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-calendar-event"></i> Ano de início <span class="hint" style="font-weight:600;text-transform:none;letter-spacing:0">— pode marcar vários</span></div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${(fac.years || []).filter(y => y.year).map(y => `<button class="mf-month ${f.years.includes(String(y.year)) ? 'on' : ''}" data-year="${esc(y.year)}">${esc(y.year)} <span style="opacity:.6">${y.total}${y.active ? ' · ' + y.active + ' ativas' : ''}</span></button>`).join('') || '<div class="hint" style="padding:8px">Importe o feed para ver os anos.</div>'}</div></div>
       <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-calendar"></i> Mês de início</div>
         <div style="display:flex;gap:5px;flex-wrap:wrap">${MONTHS.map((m, i) => { const k = String(i + 1).padStart(2, '0'); return `<button class="mf-month ${f.startMonths.includes(k) ? 'on' : ''}" data-month="${k}">${m}${monthCount[k] ? ` <span style="opacity:.6">${monthCount[k]}</span>` : ''}</button>`; }).join('')}</div></div>
+      <div class="mf-sec" style="margin-top:14px"><div class="mf-sec-title"><i class="ti ti-arrows-sort"></i> Ordenar resultados</div>
+        <select class="mf-select" id="mf-sort">
+          <option value="priority" ${js.sort === 'priority' ? 'selected' : ''}>Prioridade (ativas no DOL primeiro, depois a nota do sistema)</option>
+          <option value="active" ${js.sort === 'active' ? 'selected' : ''}>✅ Ativas primeiro</option>
+          <option value="wage" ${js.sort === 'wage' ? 'selected' : ''}>💰 Maior salário primeiro (por hora equivalente)</option>
+          <option value="start" ${js.sort === 'start' ? 'selected' : ''}>🗓️ Começa mais cedo primeiro</option>
+          <option value="openings" ${js.sort === 'openings' ? 'selected' : ''}>👥 Mais vagas primeiro</option>
+          <option value="recent" ${js.sort === 'recent' ? 'selected' : ''}>🆕 Mais recentes primeiro</option>
+        </select></div>
     `;
     const body = $('#mf-body');
     body.onclick = (ev) => {
       const v = ev.target.closest('[data-visa]'); if (v) { $$('[data-visa]', body).forEach(b => b.classList.toggle('sel', b === v)); return; }
       const m = ev.target.closest('[data-month]'); if (m) { m.classList.toggle('on'); return; }
-      const rm = ev.target.closest('[data-rm-state]'); if (rm) { rm.parentElement.remove(); return; }
-    };
-    $('#mf-state-sel').onchange = (ev) => {
-      const s = ev.target.value; if (!s) return;
-      if (!$$('#mf-states .mf-state-chip').some(c => c.textContent.trim().startsWith(s))) $('#mf-states').insertAdjacentHTML('beforeend', `<span class="mf-state-chip">${s} <button data-rm-state="${s}">×</button></span>`);
-      ev.target.value = '';
+      const y = ev.target.closest('[data-year]'); if (y) { y.classList.toggle('on'); return; }
+      if (ev.target.closest('#mf-open-location')) { closeModal('filters-modal'); openLocation(); return; }
     };
     $('#mf-title-q').oninput = (ev) => {
       const q = ev.target.value.toLowerCase();
@@ -356,13 +406,73 @@ H2B.jobs = (function () {
   function applyFilters() {
     const f = js.filters;
     f.visa = ($('#mf-body [data-visa].sel') || {}).dataset ? $('#mf-body [data-visa].sel').dataset.visa : 'all';
-    f.states = $$('#mf-states [data-rm-state]').map(b => b.dataset.rmState);
     f.city = $('#mf-city').value.trim();
     f.titles = $$('#mf-titles input:checked').map(i => i.dataset.title);
     f.minWage = $('#mf-wage').value.trim();
     f.minOpenings = $('#mf-open').value.trim();
-    f.startMonths = $$('#mf-body .mf-month.on').map(b => b.dataset.month);
+    f.startMonths = $$('#mf-body .mf-month[data-month].on').map(b => b.dataset.month);
+    f.years = $$('#mf-body .mf-month[data-year].on').map(b => b.dataset.year);
+    const so = $('#mf-sort'); if (so) js.sort = so.value;
     persist(); closeModal('filters-modal'); load(true);
+  }
+
+  // ------------------------------------------------------------ localização (estados por região)
+
+  /**
+   * Regra: estado marcado aparece, desmarcado some. Lista vazia = todos —
+   * assim um estado novo que entre no feed amanhã aparece sem precisar marcar.
+   */
+  function openLocation() {
+    const f = js.filters;
+    const byState = Object.fromEntries(((js.facets && js.facets.states) || []).map(s => [s.state, s]));
+    const known = new Set(REGIONS.flatMap(r => r.states));
+    const extra = Object.keys(byState).filter(s => !known.has(s));
+    const regions = REGIONS.concat(extra.length ? [{ id: 'other', label: 'Outros', icon: '📍', states: extra }] : []);
+    const isOn = (st) => !f.states.length || f.states.includes(st);
+    $('#loc-body').innerHTML = regions.map(r => {
+      const states = r.states.filter(st => byState[st]).sort((a, b) => (byState[b].total || 0) - (byState[a].total || 0));
+      if (!states.length) return '';
+      const total = states.reduce((n, st) => n + (byState[st].total || 0), 0);
+      const active = states.reduce((n, st) => n + (byState[st].active || 0), 0);
+      const on = states.filter(isOn).length;
+      return `<div class="mf-sec loc-region" data-region="${r.id}" style="margin-bottom:12px">
+        <label class="mf-check-row" style="border-bottom:1px solid var(--border);margin-bottom:4px">
+          <input type="checkbox" class="loc-region-cb" ${on === states.length ? 'checked' : ''} ${on && on < states.length ? 'data-partial="1"' : ''}>
+          <span style="flex:1">${r.icon} ${esc(r.label)}</span>
+          <span class="tag">${total} vaga${total === 1 ? '' : 's'}${active ? ` · ${active} ativas` : ''}</span>
+        </label>
+        <div class="loc-grid">${states.map(st => `<label class="mf-check-row loc-state"><input type="checkbox" class="loc-state-cb" data-state="${st}" ${isOn(st) ? 'checked' : ''}> <span style="flex:1"><b>${st}</b> <span class="hint">${esc(US_STATES[st] || st)}</span></span><span class="tag">${byState[st].total}${byState[st].active ? ` · ${byState[st].active} ✅` : ''}</span></label>`).join('')}</div>
+      </div>`;
+    }).join('') || '<div class="empty-state"><i class="ti ti-map-off"></i><p>Sem estados ainda</p><small>Importe o feed do DOL em Configurações.</small></div>';
+    $$('#loc-body .loc-region-cb').forEach(cb => { cb.indeterminate = cb.dataset.partial === '1'; });
+    const body = $('#loc-body');
+    body.onchange = (ev) => {
+      const rc = ev.target.closest('.loc-region-cb');
+      if (rc) { $$('.loc-state-cb', rc.closest('.loc-region')).forEach(c => { c.checked = rc.checked; }); rc.indeterminate = false; updateLocSummary(); return; }
+      const sc = ev.target.closest('.loc-state-cb');
+      if (sc) {
+        const reg = sc.closest('.loc-region'); const all = $$('.loc-state-cb', reg); const on = all.filter(c => c.checked).length;
+        const rcb = $('.loc-region-cb', reg); rcb.checked = on === all.length; rcb.indeterminate = on > 0 && on < all.length;
+        updateLocSummary();
+      }
+    };
+    $('#loc-all').onclick = () => { $$('#loc-body input[type=checkbox]').forEach(c => { c.checked = true; c.indeterminate = false; }); updateLocSummary(); };
+    $('#loc-none').onclick = () => { $$('#loc-body input[type=checkbox]').forEach(c => { c.checked = false; c.indeterminate = false; }); updateLocSummary(); };
+    $('#loc-apply').onclick = applyLocation;
+    updateLocSummary();
+    openModal('location-modal');
+  }
+  function updateLocSummary() {
+    const all = $$('#loc-body .loc-state-cb'); const on = all.filter(c => c.checked);
+    const btn = $('#loc-apply');
+    btn.textContent = !on.length ? 'Marque ao menos um estado' : on.length === all.length ? 'Aplicar · todos os estados' : `Aplicar · ${on.length} de ${all.length} estados`;
+    btn.disabled = !on.length;
+  }
+  function applyLocation() {
+    const all = $$('#loc-body .loc-state-cb'); const on = all.filter(c => c.checked).map(c => c.dataset.state);
+    if (!on.length) { toast('Marque ao menos um estado — sem nenhum marcado, nenhuma vaga apareceria.'); return; }
+    js.filters.states = on.length === all.length ? [] : on;
+    persist(); closeModal('location-modal'); load(true);
   }
 
   // ------------------------------------------------------------ wiring
@@ -385,7 +495,9 @@ H2B.jobs = (function () {
     };
     $$('#f-email, #f-notapplied, #f-housing, #f-dolactive').forEach(b => b.onclick = () => { js.quick[b.dataset.f] = !js.quick[b.dataset.f]; persist(); load(true); });
     $('#f-sort').onchange = (ev) => { js.sort = ev.target.value; persist(); load(true); };
+    $('#f-year').onchange = (ev) => { const v = ev.target.value; if (v === '__multi') return; js.filters.years = v ? [v] : []; persist(); load(true); };
     $('#btn-filters').onclick = openFilters;
+    $('#btn-location').onclick = openLocation;
     $('#mf-apply').onclick = applyFilters;
     $('#mf-clear').onclick = () => { removeFilter('all'); closeModal('filters-modal'); };
     $('#active-filters').onclick = (ev) => { const c = ev.target.closest('[data-fk]'); if (c) removeFilter(c.dataset.fk, c.dataset.fv); };
@@ -412,5 +524,5 @@ H2B.jobs = (function () {
     if (opts && opts.jobId) select(opts.jobId);
   };
 
-  return { js, load, loadFacets, select, US_STATES, MONTHS, detailHTML, refreshSelected: () => js.selected && select(js.selected.id) };
+  return { js, load, loadFacets, select, US_STATES, MONTHS, REGIONS, detailHTML, openLocation, refreshSelected: () => js.selected && select(js.selected.id) };
 })();
